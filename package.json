@@ -11,6 +11,8 @@
     "axios": "^1.6.8",
     "cheerio": "^1.0.0-rc.12",
     "node-telegram-bot-api": "^0.65.0",
-    "playwright": "^1.42.1"
+    "playwright": "^1.42.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
