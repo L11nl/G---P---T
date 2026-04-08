@@ -20,7 +20,6 @@ const ACCOUNTS_FILE = 'accounts.txt';
 let isProcessing = false;
 let activeProxy = null;
 
-// إعدادات الـ API المخصص
 const API_BASE_URL = 'https://usmail.my.id';
 const API_LICENSE_KEY = 'USMAIL-166T-DEMO';
 
@@ -44,7 +43,6 @@ function generateSecurePassword() {
     return password.split('').sort(() => 0.5 - Math.random()).join('');
 }
 
-// 1. توليد الإيميل من API usmail.my.id
 async function generateRandomEmail() {
     const username = `${faker.person.firstName().toLowerCase()}${crypto.randomBytes(3).toString('hex')}`;
     const headers = {
@@ -67,8 +65,8 @@ async function generateRandomEmail() {
     }
 }
 
-// 2. إصلاح جلب الكود من usmail.my.id (فحص كل ثانية، بحث شامل)
-async function getVerificationCode(username, chatId, pageForScreenshot = null, maxRetries = 60) {
+// ✅ جلب الكود (كل ثانية فحص) مع إمكانية استقبال page لاستخدامها في مكان آخر
+async function getVerificationCode(username, chatId, maxRetries = 60) {
     const headers = {
         'Accept': '*/*',
         'Accept-Encoding': 'gzip, deflate, br',
@@ -80,12 +78,9 @@ async function getVerificationCode(username, chatId, pageForScreenshot = null, m
     for (let i = 0; i < maxRetries; i++) {
         try {
             const res = await axios.get(messagesUrl, { headers });
-
-            // ====== البحث الشامل عن أي 6 أرقام ======
             let foundCode = null;
             const responseText = JSON.stringify(res.data);
 
-            // 1. إذا كانت هناك مصفوفة messages
             if (res.data?.success && Array.isArray(res.data.messages)) {
                 for (const msg of res.data.messages) {
                     const combined = `${msg.subject || ''} ${msg.text || ''} ${msg.html || ''} ${msg.from || ''}`;
@@ -97,37 +92,75 @@ async function getVerificationCode(username, chatId, pageForScreenshot = null, m
                 }
             }
 
-            // 2. البحث في الـ raw text بالكامل
             if (!foundCode) {
                 const allMatches = responseText.match(/\b\d{6}\b/g);
-                if (allMatches && allMatches.length > 0) {
-                    foundCode = allMatches[allMatches.length - 1]; // آخر كود ظهر
-                }
+                if (allMatches && allMatches.length > 0) foundCode = allMatches[allMatches.length - 1];
             }
 
             if (foundCode) {
                 await bot.sendMessage(chatId, `📩 **وصل الكود:** \`${foundCode}\``, { parse_mode: 'Markdown' });
                 return foundCode;
             }
-
-            // ====== إرسال لقطة شاشة للصفحة الحالية كل ثانية (حسب الطلب) ======
-            if (pageForScreenshot && !pageForScreenshot.isClosed()) {
-                try {
-                    const scPath = path.join(__dirname, `waiting_code_${Date.now()}.png`);
-                    await pageForScreenshot.screenshot({ path: scPath, fullPage: true });
-                    await bot.sendPhoto(chatId, scPath, { caption: `📸 (ثانية ${i+1}) في انتظار الكود...` });
-                    fs.unlinkSync(scPath);
-                } catch (e) {
-                    console.log("تعذر التقاط لقطة أثناء انتظار الكود:", e.message);
-                }
-            }
-
-        } catch (e) {
-            // تجاهل أخطاء الشبكة المؤقتة
-        }
-        await sleep(1000); // فحص كل ثانية
+        } catch (e) {}
+        await sleep(1000);
     }
     return null;
+}
+
+// ✅ دالة البث الحي للشاشة (تعديل نفس رسالة الصورة)
+function startLiveScreenshot(page, chatId, intervalMs = 500) {
+    let messageId = null;
+    let stopped = false;
+    let timer = null;
+
+    const sendOrUpdate = async () => {
+        if (stopped) return;
+        if (!page || page.isClosed()) return;
+
+        try {
+            const scPath = path.join(__dirname, `live_${Date.now()}.png`);
+            await page.screenshot({ path: scPath, fullPage: true });
+
+            if (!messageId) {
+                // أول مرة: إرسال صورة جديدة
+                const sent = await bot.sendPhoto(chatId, scPath, { caption: '🔴 بث مباشر للعملية...' });
+                messageId = sent.message_id;
+            } else {
+                // المرات التالية: تعديل نفس الرسالة
+                await bot.editMessageMedia(
+                    {
+                        type: 'photo',
+                        media: `attach://live.png`,
+                        caption: '🔴 بث مباشر للعملية...'
+                    },
+                    {
+                        chat_id: chatId,
+                        message_id: messageId
+                    }
+                ).catch(async () => {
+                    // إذا فشل التعديل (ربما حُذفت الرسالة) نرسل جديدة
+                    const sent = await bot.sendPhoto(chatId, scPath, { caption: '🔴 بث مباشر للعملية...' });
+                    messageId = sent.message_id;
+                });
+                // حذف الملف المؤقت
+                fs.unlinkSync(scPath);
+            }
+        } catch (err) {
+            // نتجاهل الأخطاء لكي لا يتوقف البث
+        }
+    };
+
+    // بدء المؤقت
+    sendOrUpdate(); // أول لقطة فورية
+    timer = setInterval(sendOrUpdate, intervalMs);
+
+    // دالة الإيقاف
+    const stop = () => {
+        stopped = true;
+        if (timer) clearInterval(timer);
+    };
+
+    return { stop, getMessageId: () => messageId };
 }
 
 async function simulateHumanActivityFast(page) {
@@ -135,7 +168,7 @@ async function simulateHumanActivityFast(page) {
         await page.mouse.wheel(0, 300);
         await sleep(300);
         await page.mouse.move(500, 400, { steps: 3 });
-    } catch (e) { }
+    } catch (e) {}
 }
 
 async function createAccount(chatId, currentNum, total) {
@@ -159,6 +192,7 @@ async function createAccount(chatId, currentNum, total) {
 
     const tempDir = fs.mkdtempSync(path.join(__dirname, 'chatgpt_fast_'));
     let context, page;
+    let liveStream = null;
 
     try {
         const browserOptions = {
@@ -172,11 +206,14 @@ async function createAccount(chatId, currentNum, total) {
         context = await chromium.launchPersistentContext(tempDir, browserOptions);
         page = await context.newPage();
 
+        // ✅ بدء البث الحي للشاشة
+        liveStream = startLiveScreenshot(page, chatId, 500); // تحديث كل 0.5 ثانية
+
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 45000 });
         await simulateHumanActivityFast(page);
 
         const signupBtn = page.locator('button:has-text("Sign up")');
-        await signupBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(() => { });
+        await signupBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
         if (await signupBtn.isVisible()) await signupBtn.click();
 
         const emailInput = page.locator('input[id="email-input"], input[name="email"]');
@@ -189,7 +226,6 @@ async function createAccount(chatId, currentNum, total) {
         await passInput.fill(password);
         await page.keyboard.press('Enter');
 
-        // انتظر قليلاً حتى تظهر شاشة إدخال الكود
         await sleep(3000);
 
         try {
@@ -199,23 +235,22 @@ async function createAccount(chatId, currentNum, total) {
             if (e.message.includes("مرفوض")) throw e;
         }
 
-        bot.sendMessage(chatId, "⏳ بانتظار الكود من usmail... (فحص كل ثانية مع لقطات شاشة)");
+        await bot.sendMessage(chatId, "⏳ بانتظار الكود من usmail... (فحص كل ثانية)");
 
-        // تمرير كائن page إلى دالة جلب الكود لالتقاط لقطات شاشة دورية
-        let code = await getVerificationCode(username, chatId, page, 60);
+        let code = await getVerificationCode(username, chatId, 60);
 
         if (!code) {
             const resendBtn = page.locator('button:has-text("Resend email")');
             if (await resendBtn.isVisible().catch(() => false)) {
                 await resendBtn.click();
                 await bot.sendMessage(chatId, "🔄 ضغطنا إعادة إرسال...");
-                code = await getVerificationCode(username, chatId, page, 30);
+                code = await getVerificationCode(username, chatId, 30);
             }
         }
 
         if (!code) throw new Error("الكود ما وصل.");
 
-        // === جميع الاحتمالات لإدخال الكود ===
+        // جميع احتمالات حقول الكود
         let codeInputFilled = false;
         const possibleSelectors = [
             'input[aria-label="Verification code"]',
@@ -233,9 +268,8 @@ async function createAccount(chatId, currentNum, total) {
                 await input.waitFor({ state: 'visible', timeout: 5000 });
                 await input.fill(code);
                 codeInputFilled = true;
-                console.log(`تم ملء الكود باستخدام: ${selector}`);
                 break;
-            } catch (e) { }
+            } catch (e) {}
         }
 
         if (!codeInputFilled) {
@@ -245,7 +279,7 @@ async function createAccount(chatId, currentNum, total) {
         }
 
         const nameInput = page.locator('input[name="name"]');
-        await nameInput.waitFor({ state: 'visible', timeout: 10000 }).catch(() => { });
+        await nameInput.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
         if (await nameInput.isVisible()) {
             await nameInput.fill(fullName);
             await page.keyboard.press('Enter');
@@ -255,6 +289,9 @@ async function createAccount(chatId, currentNum, total) {
         const result = `${email}|${password}`;
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
         await bot.sendMessage(chatId, `\`${result}\``, { parse_mode: 'Markdown' });
+
+        // ✅ إيقاف البث الحي
+        if (liveStream) liveStream.stop();
 
         await context.close();
         return true;
@@ -266,16 +303,16 @@ async function createAccount(chatId, currentNum, total) {
             try {
                 const scPath = path.join(tempDir, 'error_screenshot.png');
                 await page.screenshot({ path: scPath, fullPage: true });
-                await bot.sendPhoto(chatId, scPath, { caption: `📸 لقطة شاشة للخطأ حتى تعرف وين توقف:` });
-            } catch (err) {
-                console.log("تعذر التقاط سكرين شوت", err);
-            }
+                await bot.sendPhoto(chatId, scPath, { caption: `📸 لقطة شاشة للخطأ:` });
+            } catch (err) {}
         }
 
+        // ✅ إيقاف البث الحي عند الخطأ أيضاً
+        if (liveStream) liveStream.stop();
         if (context) await context.close();
         return false;
     } finally {
-        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) { }
+        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
     }
 }
 
