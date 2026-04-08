@@ -67,8 +67,8 @@ async function generateRandomEmail() {
     }
 }
 
-// 2. إصلاح جلب الكود من usmail.my.id (محسّنة مع احتمالات متعددة)
-async function getVerificationCode(username, chatId, maxRetries = 20) {
+// 2. إصلاح جلب الكود من usmail.my.id (فحص كل ثانية، بحث شامل)
+async function getVerificationCode(username, chatId, pageForScreenshot = null, maxRetries = 60) {
     const headers = {
         'Accept': '*/*',
         'Accept-Encoding': 'gzip, deflate, br',
@@ -80,28 +80,28 @@ async function getVerificationCode(username, chatId, maxRetries = 20) {
     for (let i = 0; i < maxRetries; i++) {
         try {
             const res = await axios.get(messagesUrl, { headers });
-            
-            // البحث في كل مكان محتمل عن كود 6 أرقام
+
+            // ====== البحث الشامل عن أي 6 أرقام ======
             let foundCode = null;
-            
-            // 1. إذا كانت البيانات تحتوي على مصفوفة messages
+            const responseText = JSON.stringify(res.data);
+
+            // 1. إذا كانت هناك مصفوفة messages
             if (res.data?.success && Array.isArray(res.data.messages)) {
                 for (const msg of res.data.messages) {
-                    const text = (msg.subject || '') + ' ' + (msg.text || '') + ' ' + (msg.html || '');
-                    const match = text.match(/\b\d{6}\b/);
+                    const combined = `${msg.subject || ''} ${msg.text || ''} ${msg.html || ''} ${msg.from || ''}`;
+                    const match = combined.match(/\b\d{6}\b/);
                     if (match) {
                         foundCode = match[0];
                         break;
                     }
                 }
             }
-            
-            // 2. البحث في النص الخام للاستجابة بالكامل كخطة بديلة
+
+            // 2. البحث في الـ raw text بالكامل
             if (!foundCode) {
-                const rawText = JSON.stringify(res.data);
-                const match = rawText.match(/\b\d{6}\b/g);
-                if (match && match.length > 0) {
-                    foundCode = match[match.length - 1]; // نأخذ آخر ظهور
+                const allMatches = responseText.match(/\b\d{6}\b/g);
+                if (allMatches && allMatches.length > 0) {
+                    foundCode = allMatches[allMatches.length - 1]; // آخر كود ظهر
                 }
             }
 
@@ -109,10 +109,23 @@ async function getVerificationCode(username, chatId, maxRetries = 20) {
                 await bot.sendMessage(chatId, `📩 **وصل الكود:** \`${foundCode}\``, { parse_mode: 'Markdown' });
                 return foundCode;
             }
+
+            // ====== إرسال لقطة شاشة للصفحة الحالية كل ثانية (حسب الطلب) ======
+            if (pageForScreenshot && !pageForScreenshot.isClosed()) {
+                try {
+                    const scPath = path.join(__dirname, `waiting_code_${Date.now()}.png`);
+                    await pageForScreenshot.screenshot({ path: scPath, fullPage: true });
+                    await bot.sendPhoto(chatId, scPath, { caption: `📸 (ثانية ${i+1}) في انتظار الكود...` });
+                    fs.unlinkSync(scPath);
+                } catch (e) {
+                    console.log("تعذر التقاط لقطة أثناء انتظار الكود:", e.message);
+                }
+            }
+
         } catch (e) {
-            // تجاهل الأخطاء المؤقتة
+            // تجاهل أخطاء الشبكة المؤقتة
         }
-        await sleep(3000);
+        await sleep(1000); // فحص كل ثانية
     }
     return null;
 }
@@ -123,27 +136,6 @@ async function simulateHumanActivityFast(page) {
         await sleep(300);
         await page.mouse.move(500, 400, { steps: 3 });
     } catch (e) { }
-}
-
-// دالة جديدة لالتقاط لقطة شاشة وإرسالها كل 10 ثواني (تعمل في الخلفية)
-function startScreenshotInterval(page, chatId, stopSignal) {
-    const interval = setInterval(async () => {
-        if (stopSignal.stopped) {
-            clearInterval(interval);
-            return;
-        }
-        try {
-            if (page && !page.isClosed()) {
-                const screenshotPath = path.join(__dirname, `screenshot_${Date.now()}.png`);
-                await page.screenshot({ path: screenshotPath, fullPage: true });
-                await bot.sendPhoto(chatId, screenshotPath, { caption: `📸 لقطة شاشة دورية - ${new Date().toLocaleTimeString()}` });
-                fs.unlinkSync(screenshotPath); // حذف الملف بعد الإرسال لتوفير المساحة
-            }
-        } catch (e) {
-            console.log("تعذر التقاط لقطة شاشة دورية:", e.message);
-        }
-    }, 10000); // كل 10 ثواني
-    return interval;
 }
 
 async function createAccount(chatId, currentNum, total) {
@@ -167,8 +159,6 @@ async function createAccount(chatId, currentNum, total) {
 
     const tempDir = fs.mkdtempSync(path.join(__dirname, 'chatgpt_fast_'));
     let context, page;
-    const stopSignal = { stopped: false };
-    let screenshotInterval = null;
 
     try {
         const browserOptions = {
@@ -181,9 +171,6 @@ async function createAccount(chatId, currentNum, total) {
 
         context = await chromium.launchPersistentContext(tempDir, browserOptions);
         page = await context.newPage();
-
-        // بدء التقاط لقطات الشاشة الدورية
-        screenshotInterval = startScreenshotInterval(page, chatId, stopSignal);
 
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 45000 });
         await simulateHumanActivityFast(page);
@@ -202,8 +189,8 @@ async function createAccount(chatId, currentNum, total) {
         await passInput.fill(password);
         await page.keyboard.press('Enter');
 
-        // انتظر حتى يتم إرسال الكود إلى الإيميل
-        await sleep(5000);
+        // انتظر قليلاً حتى تظهر شاشة إدخال الكود
+        await sleep(3000);
 
         try {
             await page.waitForSelector('text="Failed to create account"', { timeout: 3000 });
@@ -212,22 +199,23 @@ async function createAccount(chatId, currentNum, total) {
             if (e.message.includes("مرفوض")) throw e;
         }
 
-        bot.sendMessage(chatId, "⏳ بانتظار الكود من usmail...");
-        let code = await getVerificationCode(username, chatId, 20);
+        bot.sendMessage(chatId, "⏳ بانتظار الكود من usmail... (فحص كل ثانية مع لقطات شاشة)");
+
+        // تمرير كائن page إلى دالة جلب الكود لالتقاط لقطات شاشة دورية
+        let code = await getVerificationCode(username, chatId, page, 60);
 
         if (!code) {
             const resendBtn = page.locator('button:has-text("Resend email")');
             if (await resendBtn.isVisible().catch(() => false)) {
                 await resendBtn.click();
                 await bot.sendMessage(chatId, "🔄 ضغطنا إعادة إرسال...");
-                code = await getVerificationCode(username, chatId, 15);
+                code = await getVerificationCode(username, chatId, page, 30);
             }
         }
 
         if (!code) throw new Error("الكود ما وصل.");
 
-        // === تحسينات للعثور على حقل الكود بجميع الاحتمالات ===
-        // نستخدم عدة محاولات و locators مختلفة
+        // === جميع الاحتمالات لإدخال الكود ===
         let codeInputFilled = false;
         const possibleSelectors = [
             'input[aria-label="Verification code"]',
@@ -245,21 +233,17 @@ async function createAccount(chatId, currentNum, total) {
                 await input.waitFor({ state: 'visible', timeout: 5000 });
                 await input.fill(code);
                 codeInputFilled = true;
-                console.log(`تم ملء الكود باستخدام selector: ${selector}`);
+                console.log(`تم ملء الكود باستخدام: ${selector}`);
                 break;
-            } catch (e) {
-                // تجاهل وانتقل للمحاولة التالية
-            }
+            } catch (e) { }
         }
 
         if (!codeInputFilled) {
-            // محاولة أخيرة باستخدام التركيز على أي حقل ظاهر
             await page.keyboard.press('Tab');
             await sleep(500);
             await page.keyboard.type(code);
         }
 
-        // متابعة باقي الخطوات
         const nameInput = page.locator('input[name="name"]');
         await nameInput.waitFor({ state: 'visible', timeout: 10000 }).catch(() => { });
         if (await nameInput.isVisible()) {
@@ -272,17 +256,12 @@ async function createAccount(chatId, currentNum, total) {
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
         await bot.sendMessage(chatId, `\`${result}\``, { parse_mode: 'Markdown' });
 
-        // إيقاف لقطات الشاشة الدورية
-        stopSignal.stopped = true;
-        if (screenshotInterval) clearInterval(screenshotInterval);
-
         await context.close();
         return true;
 
     } catch (error) {
         await bot.sendMessage(chatId, `❌ خطأ: ${error.message}`);
 
-        // ميزة السكرين شوت ثابتة (لقطة أخيرة للخطأ)
         if (page) {
             try {
                 const scPath = path.join(tempDir, 'error_screenshot.png');
@@ -292,10 +271,6 @@ async function createAccount(chatId, currentNum, total) {
                 console.log("تعذر التقاط سكرين شوت", err);
             }
         }
-
-        // إيقاف الفاصل الزمني
-        stopSignal.stopped = true;
-        if (screenshotInterval) clearInterval(screenshotInterval);
 
         if (context) await context.close();
         return false;
