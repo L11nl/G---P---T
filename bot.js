@@ -2,7 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const { chromium } = require('playwright-extra'); 
 const stealth = require('puppeteer-extra-plugin-stealth')();
 const axios = require('axios');
-const cheerio = require('cheerio');
+const cheerio = require('cheerio'); // ما زلنا نحتاجها إذا احتجناها مستقبلاً، لكن الإيميل الجديد لا يحتاجها
 const { faker } = require('@faker-js/faker');
 const fs = require('fs');
 const path = require('path');
@@ -44,46 +44,58 @@ function generateSecurePassword() {
     return password.split('').sort(() => 0.5 - Math.random()).join('');
 }
 
-// 1. ميزة الدومينات المتعددة والمختلفة
+// ==========================================
+// 1. التحديث الجديد: استخدام API موقع 1secmail لتوليد الإيميل
+// ==========================================
 async function generateRandomEmail() {
     try {
-        const response = await axios.get("https://generator.email/", {
-            headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
-        });
-        const $ = cheerio.load(response.data);
-        const domains = [];
-        $(".e7m.tt-suggestions div > p, .tt-suggestions p").each((i, elem) => {
-            const domainText = $(elem).text().trim();
-            if (domainText.includes('.') && !domainText.includes(' ')) {
-                domains.push(domainText);
-            }
-        });
+        // سحب قائمة الدومينات الشغالة حالياً من الموقع
+        const response = await axios.get("https://www.1secmail.com/api/v1/?action=getDomainList");
+        const domains = response.data;
+        const domain = domains[Math.floor(Math.random() * domains.length)];
+        const username = `${faker.person.firstName()}${faker.person.lastName()}${crypto.randomBytes(3).toString('hex')}`.toLowerCase();
         
-        // قائمة احتياطية منوعة في حال فشل جلب الدومينات
-        const fallbackDomains = [
-            "xezo.live", "muahetbienhoa.com", "gmailvn.xyz", "mailvn.top", 
-            "finews.biz", "nonicorp.com", "yopmail.com", "fomosi.com"
-        ];
-        
-        const domain = domains.length > 5 ? domains[Math.floor(Math.random() * domains.length)] : fallbackDomains[Math.floor(Math.random() * fallbackDomains.length)];
-        
-        return `${faker.person.firstName()}${faker.person.lastName()}${crypto.randomBytes(4).toString('hex')}@${domain}`.toLowerCase();
+        return `${username}@${domain}`;
     } catch (error) {
-        throw new Error("فشل في توليد الإيميل.");
+        // قائمة احتياطية في حال فشل الاتصال
+        const fallbackDomains = ["1secmail.com", "1secmail.org", "1secmail.net", "kzccv.com"];
+        const domain = fallbackDomains[Math.floor(Math.random() * fallbackDomains.length)];
+        const username = `${faker.person.firstName()}${faker.person.lastName()}${crypto.randomBytes(3).toString('hex')}`.toLowerCase();
+        
+        return `${username}@${domain}`;
     }
 }
 
-async function getVerificationCode(email, maxRetries = 15) {
+// ==========================================
+// 2. التحديث الجديد: جلب كود التفعيل عبر API بشكل صاروخي
+// ==========================================
+async function getVerificationCode(email, maxRetries = 20) {
     const [username, domain] = email.split("@");
-    const inboxUrl = `https://generator.email/${domain}/${username}`;
+    
     for (let i = 0; i < maxRetries; i++) {
         try {
-            const res = await axios.get(inboxUrl, { headers: { "user-agent": "Mozilla/5.0" } });
-            const $ = cheerio.load(res.data);
-            const codeMatch = $("body").text().match(/\b\d{6}\b/) || $("#email_content").text().match(/\b\d{6}\b/);
-            if (codeMatch) return codeMatch[0];
-        } catch (e) {}
-        await sleep(4000);
+            // فحص صندوق الوارد
+            const inboxRes = await axios.get(`https://www.1secmail.com/api/v1/?action=getMessages&login=${username}&domain=${domain}`);
+            const messages = inboxRes.data;
+
+            if (messages && messages.length > 0) {
+                // سحب رقم تعريف أول رسالة (أحدث رسالة)
+                const msgId = messages[0].id;
+                
+                // فتح الرسالة وقراءة محتواها
+                const msgRes = await axios.get(`https://www.1secmail.com/api/v1/?action=readMessage&login=${username}&domain=${domain}&id=${msgId}`);
+                const content = msgRes.data.textBody || msgRes.data.body || "";
+
+                // استخراج الكود المكون من 6 أرقام
+                const codeMatch = content.match(/\b\d{6}\b/);
+                if (codeMatch) {
+                    return codeMatch[0];
+                }
+            }
+        } catch (e) {
+            console.log("جارٍ انتظار الرسالة...");
+        }
+        await sleep(4000); // الانتظار 4 ثواني قبل الفحص مرة ثانية
     }
     return null;
 }
@@ -176,7 +188,7 @@ async function createAccount(chatId, currentNum, total) {
         await sleep(1000);
         await page.keyboard.press('Enter');
         
-        await bot.sendMessage(chatId, "🔑 كتابة الباسورد...");
+        await bot.sendMessage(chatId, "🔑🖤 كتابة الباسورد...");
         await sleep(6000);
         const passInput = page.locator('input[type="password"]');
         await passInput.waitFor({ state: 'visible', timeout: 20000 });
@@ -184,29 +196,26 @@ async function createAccount(chatId, currentNum, total) {
         await sleep(1000);
         await passInput.press('Enter');
 
-        // كشف سريع إذا تم رفض الدومين من قبل ChatGPT
         await sleep(5000);
         if (await page.isVisible('div:has-text("Failed to create account")') || await page.isVisible('text="Failed to create account"')) {
             throw new Error("سيرفر ChatGPT رفض الإنشاء (تم حظر هذا الدومين أو الآي بي).");
         }
 
-        // 2. ميزة إعادة إرسال الكود (Resend email)
         await bot.sendMessage(chatId, "⏳ انتظار كود التفعيل (المحاولة الأولى)...");
-        let code = await getVerificationCode(email, 12); // ينتظر تقريباً 48 ثانية
+        let code = await getVerificationCode(email, 15);
 
         if (!code) {
             await bot.sendMessage(chatId, "⚠️ الكود تأخر، جاري الضغط على Resend email...");
             try {
-                // البحث عن زر إعادة الإرسال والضغط عليه
                 const resendBtn = page.locator('button:has-text("Resend email"), a:has-text("Resend email")');
                 if (await resendBtn.isVisible({ timeout: 5000 })) {
                     await resendBtn.click();
                     await sleep(3000);
                     await bot.sendMessage(chatId, "⏳ انتظار الكود (المحاولة الثانية)...");
-                    code = await getVerificationCode(email, 15); // ينتظر دقيقة إضافية
+                    code = await getVerificationCode(email, 15);
                 } else {
                     bot.sendMessage(chatId, "لم يتم العثور على زر إعادة الإرسال، جاري الانتظار قليلاً...");
-                    code = await getVerificationCode(email, 5); // محاولة أخيرة قصيرة
+                    code = await getVerificationCode(email, 5);
                 }
             } catch (e) {
                 console.log("خطأ في الضغط على إعادة الإرسال", e);
