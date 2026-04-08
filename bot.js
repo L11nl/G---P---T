@@ -32,57 +32,35 @@ function generateSecurePassword() {
     return password;
 }
 
-// توليد إيميل من API usmail
+// 1. توليد الإيميل من API usmail
 async function generateRandomEmail() {
     const username = `${faker.person.firstName().toLowerCase()}${crypto.randomBytes(3).toString('hex')}`;
-    const headers = { 'X-License-Key': API_LICENSE_KEY, 'Referer': `${API_BASE_URL}/room/master` };
+    const headers = {
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-US,en;q=0.9,ar-IQ;q=0.8,ar;q=0.7',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+        'X-License-Key': API_LICENSE_KEY,
+        'Referer': `${API_BASE_URL}/room/master`
+    };
     try {
         const res = await axios.get(`${API_BASE_URL}/api/public/rooms/master/domains`, { headers, timeout: 5000 });
-        const domains = res.data?.domains || ["usmail.my.id"];
+        const domains = (res.data && res.data.success) ? res.data.domains : ["usmail.my.id", "toolsmail.me"];
         return { email: `${username}@${domains[Math.floor(Math.random() * domains.length)]}`, username };
     } catch (e) {
         return { email: `${username}@usmail.my.id`, username };
     }
 }
 
-// جلب الكود بذكاء
-async function getVerificationCode(username, chatId) {
-    const headers = { 'X-License-Key': API_LICENSE_KEY };
-    const url = `${API_BASE_URL}/api/public/rooms/${username}/messages`;
-    for (let i = 0; i < 40; i++) {
-        try {
-            const res = await axios.get(url, { headers, timeout: 3000 });
-            const dataStr = JSON.stringify(res.data);
-            const matches = dataStr.match(/\b\d{6}\b/g);
-            if (matches) {
-                const code = matches[matches.length - 1];
-                await bot.sendMessage(chatId, `📩 **الكود المستخرج:** \`${code}\``, { parse_mode: 'Markdown' });
-                return code;
-            }
-        } catch (e) {}
-        await sleep(2000);
-    }
-    return null;
-}
-
 // ==========================================
-// التحديث الجديد: إرسال صورة، وحذف القديمة لضمان الحركة
+// نظام تحريك الفريمات (إرسال صورة وحذف القديمة)
 // ==========================================
 async function sendMovingFrame(page, chatId, oldMessageId, caption) {
     if (!page || page.isClosed()) return oldMessageId;
     try {
-        // أخذ الصورة كـ Buffer لسرعة النقل (بدون حفظ بالملفات)
-        const imageBuffer = await page.screenshot({ quality: 70, type: 'jpeg' });
-
-        // 1. حذف الصورة القديمة (كما طلبت)
-        if (oldMessageId) {
-            await bot.deleteMessage(chatId, oldMessageId).catch(() => {});
-        }
-
-        // 2. إرسال الصورة الجديدة مكانها
+        const imageBuffer = await page.screenshot({ quality: 75, type: 'jpeg' });
+        if (oldMessageId) await bot.deleteMessage(chatId, oldMessageId).catch(() => {});
         const sentMsg = await bot.sendPhoto(chatId, imageBuffer, { caption: `🔴 المتصفح الآن | ${caption}` }, { filename: 'frame.jpg', contentType: 'image/jpeg' });
-        
-        // إرجاع الآي دي الجديد حتى نحذفه بالخطوة الجاية
         return sentMsg.message_id;
     } catch (err) {
         return oldMessageId;
@@ -98,8 +76,8 @@ async function createAccount(chatId, current, total) {
 
     await bot.editMessageText(`📧 \`${email}\`\n🔑 \`${password}\`\n🚀 جاري تشغيل المتصفح...`, { chat_id: chatId, message_id: status.message_id, parse_mode: 'Markdown' });
 
-    const tempDir = fs.mkdtempSync(path.join(__dirname, 'chatgpt_steady_'));
-    let context, page, frameId = null;
+    const tempDir = fs.mkdtempSync(path.join(__dirname, 'chatgpt_bot_'));
+    let context, page, emailPage, frameId = null;
 
     try {
         context = await chromium.launchPersistentContext(tempDir, {
@@ -109,51 +87,99 @@ async function createAccount(chatId, current, total) {
         });
         page = await context.newPage();
         
-        // فريم 1
-        frameId = await sendMovingFrame(page, chatId, frameId, "المتصفح جاهز للعمل");
-
+        frameId = await sendMovingFrame(page, chatId, frameId, "فتح موقع ChatGPT");
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 45000 });
-        
-        // فريم 2
-        frameId = await sendMovingFrame(page, chatId, frameId, "تم تحميل موقع ChatGPT");
         await sleep(2000);
 
-        // فريم 3
         const signup = page.locator('button:has-text("Sign up")');
-        await signup.waitFor({ state: 'visible' });
+        await signup.waitFor({ state: 'visible', timeout: 15000 });
         frameId = await sendMovingFrame(page, chatId, frameId, "الضغط على التسجيل (Sign up)");
         await signup.click();
         await sleep(3000);
 
-        // فريم 4
         const emailInp = page.locator('input[name="email"]');
-        await emailInp.waitFor({ state: 'visible' });
+        await emailInp.waitFor({ state: 'visible', timeout: 15000 });
         await emailInp.fill(email);
         frameId = await sendMovingFrame(page, chatId, frameId, `كتابة الإيميل: ${email}`);
         await page.keyboard.press('Enter');
         await sleep(4000);
 
-        // فريم 5
         const passInp = page.locator('input[type="password"]');
-        await passInp.waitFor({ state: 'visible' });
+        await passInp.waitFor({ state: 'visible', timeout: 15000 });
         await passInp.fill(password);
         frameId = await sendMovingFrame(page, chatId, frameId, "كتابة الباسورد");
         await page.keyboard.press('Enter');
         await sleep(5000);
 
-        // فريم 6
-        frameId = await sendMovingFrame(page, chatId, frameId, "في صفحة الكود، جاري سحب الكود من usmail...");
-        const code = await getVerificationCode(username, chatId);
-        if (!code) throw new Error("الكود لم يصل.");
+        // ==========================================
+        // الانتقال لصفحة الإيميل لتصويرها وسحب الكود
+        // ==========================================
+        frameId = await sendMovingFrame(page, chatId, frameId, "طلب رمز التحقق.. جاري فتح صندوق الوارد 🔄");
+        
+        emailPage = await context.newPage(); // فتح تاب جديد
+        await emailPage.goto(`${API_BASE_URL}/room/${username}`, { waitUntil: "domcontentloaded" });
+        frameId = await sendMovingFrame(emailPage, chatId, frameId, `صندوق الوارد للإيميل: ${email}`);
 
-        // فريم 7
-        await page.keyboard.type(code, { delay: 100 });
-        frameId = await sendMovingFrame(page, chatId, frameId, `تم إدخال الكود بنجاح: ${code}`);
-        await sleep(6000);
+        let code = null;
+        const headers = {
+            'Accept': '*/*',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'X-License-Key': API_LICENSE_KEY,
+            'Referer': `${API_BASE_URL}/room/${username}`
+        };
+        const messagesUrl = `${API_BASE_URL}/api/public/rooms/${username}/messages`;
 
-        // فريم 8
+        for (let i = 0; i < 20; i++) {
+            try {
+                const res = await axios.get(messagesUrl, { headers, timeout: 3000 });
+                const matches = JSON.stringify(res.data).match(/\b\d{6}\b/g);
+                if (matches) {
+                    code = matches[matches.length - 1];
+                    frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم استلام الكود: ${code}`);
+                    break;
+                }
+            } catch (e) {}
+            
+            // تحديث الصورة كل محاولتين حتى تبين الحركة
+            if (i % 2 === 0 && !code) {
+                frameId = await sendMovingFrame(emailPage, chatId, frameId, `⏳ ننتظر وصول رسالة OpenAI... (محاولة ${i+1})`);
+            }
+            await sleep(2500);
+        }
+
+        if (!code) throw new Error("لم يصل الكود للصندوق.");
+
+        // إغلاق تاب الإيميل والعودة لـ ChatGPT
+        await emailPage.close();
+        await page.bringToFront();
+        frameId = await sendMovingFrame(page, chatId, frameId, "العودة لـ ChatGPT لإدخال الكود 🔙");
+        await sleep(1000);
+
+        // إدخال الكود بطريقة مضمونة (النقر ثم الكتابة)
+        const codeInputSelectors = ['input[aria-label="Verification code"]', 'input[type="text"]', 'input[inputmode="numeric"]'];
+        let isCodeFilled = false;
+        
+        for (const sel of codeInputSelectors) {
+            const input = page.locator(sel).first();
+            if (await input.isVisible().catch(()=>false)) {
+                await input.click(); // النقر ضروري جداً هنا
+                await input.fill(code);
+                isCodeFilled = true;
+                break;
+            }
+        }
+        
+        if (!isCodeFilled) {
+            await page.mouse.click(500, 400); 
+            await page.keyboard.type(code, { delay: 100 });
+        }
+
+        frameId = await sendMovingFrame(page, chatId, frameId, `تم كتابة الكود بنجاح`);
+        await sleep(5000);
+
+        // إدخال الاسم
         const nameInp = page.locator('input[name="name"]');
-        if (await nameInp.isVisible()) {
+        if (await nameInp.isVisible({ timeout: 5000 }).catch(()=>false)) {
             await nameInp.fill(fullName);
             frameId = await sendMovingFrame(page, chatId, frameId, `إدخال الاسم: ${fullName}`);
             await page.keyboard.press('Enter');
@@ -163,16 +189,15 @@ async function createAccount(chatId, current, total) {
         const result = `${email}|${password}`;
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
         
-        // مسح آخر صورة بعد النجاح حتى يبقى الشات نظيف
+        // تنظيف الشات من آخر صورة
         if (frameId) await bot.deleteMessage(chatId, frameId).catch(() => {});
-        
         await bot.sendMessage(chatId, `\`${result}\``, { parse_mode: 'Markdown' });
 
     } catch (error) {
-        await bot.sendMessage(chatId, `❌ خطأ: ${error.message}`);
-        // صورة الخطأ النهائية
+        await bot.sendMessage(chatId, `❌ توقف العمل: ${error.message}`);
+        // صورة الخطأ النهائية الثابتة
         if (page) {
-            const errBuffer = await page.screenshot({ fullPage: true });
+            const errBuffer = await page.screenshot({ fullPage: true, quality: 75, type: 'jpeg' });
             await bot.sendPhoto(chatId, errBuffer, { caption: '📸 الشاشة وقت حدوث المشكلة' }, { filename: 'error.jpg', contentType: 'image/jpeg' });
         }
     } finally {
@@ -189,6 +214,7 @@ bot.onText(/\/create (.+)/, async (msg, match) => {
     const num = parseInt(match[1]) || 1;
     for (let i = 1; i <= num; i++) {
         await createAccount(msg.chat.id, i, num);
+        await sleep(2000);
     }
     isProcessing = false;
     bot.sendMessage(msg.chat.id, "🏁 انتهت جميع المهمات.");
