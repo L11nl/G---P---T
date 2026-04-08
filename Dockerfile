@@ -1,11 +1,11 @@
-FROM mcr.microsoft.com/playwright:v1.44.0-jammy
+FROM mcr.microsoft.com/playwright:v1.59.1-jammy
 
 WORKDIR /app
 
 COPY package*.json ./
 RUN npm install
 
-RUN npx playwright install firefox
+RUN npx playwright install
 
 COPY . .
 
