@@ -66,35 +66,31 @@ async function getVerificationCode(username, chatId) {
 }
 
 // ==========================================
-// نظام الفريمات الثابتة والمستقرة (بث أبطأ وأوضح)
+// التحديث الجديد: إرسال صورة، وحذف القديمة لضمان الحركة
 // ==========================================
-async function sendSteadyFrame(page, chatId, messageId, caption) {
-    if (!page || page.isClosed()) return null;
+async function sendMovingFrame(page, chatId, oldMessageId, caption) {
+    if (!page || page.isClosed()) return oldMessageId;
     try {
-        const scPath = path.join(__dirname, `steady_${chatId}.jpg`);
-        // جودة JPEG ممتازة للنقل المستقر
-        await page.screenshot({ path: scPath, quality: 80, type: 'jpeg' });
+        // أخذ الصورة كـ Buffer لسرعة النقل (بدون حفظ بالملفات)
+        const imageBuffer = await page.screenshot({ quality: 70, type: 'jpeg' });
 
-        if (!messageId) {
-            const sent = await bot.sendPhoto(chatId, scPath, { caption: `🔴 فريم ثابت | ${caption}` });
-            fs.unlinkSync(scPath);
-            return sent.message_id;
-        } else {
-            // تعديل نفس الصورة ببطء لتوفير السلاسة
-            await bot.editMessageMedia(
-                { type: 'photo', media: `attach://live`, caption: `🔴 فريم ثابت | ${caption}` },
-                { chat_id: chatId, message_id: messageId }
-            ).catch(() => {});
-            if (fs.existsSync(scPath)) fs.unlinkSync(scPath);
-            return messageId;
+        // 1. حذف الصورة القديمة (كما طلبت)
+        if (oldMessageId) {
+            await bot.deleteMessage(chatId, oldMessageId).catch(() => {});
         }
+
+        // 2. إرسال الصورة الجديدة مكانها
+        const sentMsg = await bot.sendPhoto(chatId, imageBuffer, { caption: `🔴 المتصفح الآن | ${caption}` }, { filename: 'frame.jpg', contentType: 'image/jpeg' });
+        
+        // إرجاع الآي دي الجديد حتى نحذفه بالخطوة الجاية
+        return sentMsg.message_id;
     } catch (err) {
-        return messageId;
+        return oldMessageId;
     }
 }
 
 async function createAccount(chatId, current, total) {
-    const status = await bot.sendMessage(chatId, `🚀 بدأت عملية الحساب المستقرة [${current}/${total}]...`);
+    const status = await bot.sendMessage(chatId, `🚀 بدأت عملية الحساب [${current}/${total}]...`);
     
     const { email, username } = await generateRandomEmail();
     const password = generateSecurePassword();
@@ -103,7 +99,7 @@ async function createAccount(chatId, current, total) {
     await bot.editMessageText(`📧 \`${email}\`\n🔑 \`${password}\`\n🚀 جاري تشغيل المتصفح...`, { chat_id: chatId, message_id: status.message_id, parse_mode: 'Markdown' });
 
     const tempDir = fs.mkdtempSync(path.join(__dirname, 'chatgpt_steady_'));
-    let context, page, frameMessageId = null;
+    let context, page, frameId = null;
 
     try {
         context = await chromium.launchPersistentContext(tempDir, {
@@ -113,72 +109,79 @@ async function createAccount(chatId, current, total) {
         });
         page = await context.newPage();
         
-        // فريم 1: المتصفح جاهز
-        frameMessageId = await sendSteadyFrame(page, chatId, frameMessageId, "المتصفح جاهز");
+        // فريم 1
+        frameId = await sendMovingFrame(page, chatId, frameId, "المتصفح جاهز للعمل");
 
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 45000 });
-        // فريم 2: تم تحميل الصفحة
-        frameMessageId = await sendSteadyFrame(page, chatId, frameMessageId, "تم تحميل الصفحة");
-        await sleep(3000); // انتظر قليلاً للمشاهدة
+        
+        // فريم 2
+        frameId = await sendMovingFrame(page, chatId, frameId, "تم تحميل موقع ChatGPT");
+        await sleep(2000);
 
-        // فريم 3: جاري الضغط على Sign up
+        // فريم 3
         const signup = page.locator('button:has-text("Sign up")');
         await signup.waitFor({ state: 'visible' });
-        frameMessageId = await sendSteadyFrame(page, chatId, frameMessageId, "جاري الضغط على التسجيل");
+        frameId = await sendMovingFrame(page, chatId, frameId, "الضغط على التسجيل (Sign up)");
         await signup.click();
-        await sleep(3000); // انتظر حتى تفتح الصفحة الجديدة
+        await sleep(3000);
 
-        // فريم 4: كتابة الإيميل
+        // فريم 4
         const emailInp = page.locator('input[name="email"]');
         await emailInp.waitFor({ state: 'visible' });
         await emailInp.fill(email);
-        frameMessageId = await sendSteadyFrame(page, chatId, frameMessageId, `تم كتابة الإيميل: ${email}`);
+        frameId = await sendMovingFrame(page, chatId, frameId, `كتابة الإيميل: ${email}`);
         await page.keyboard.press('Enter');
-        await sleep(5000); // انتظر وقت أطول لصفحة الباسورد
+        await sleep(4000);
 
-        // فريم 5: كتابة الباسورد
+        // فريم 5
         const passInp = page.locator('input[type="password"]');
         await passInp.waitFor({ state: 'visible' });
         await passInp.fill(password);
-        frameMessageId = await sendSteadyFrame(page, chatId, frameMessageId, "تم كتابة الباسورد");
+        frameId = await sendMovingFrame(page, chatId, frameId, "كتابة الباسورد");
         await page.keyboard.press('Enter');
-        await sleep(5000); // انتظر صفحة الكود
+        await sleep(5000);
 
-        // فريم 6: صفحة الكود
-        frameMessageId = await sendSteadyFrame(page, chatId, frameMessageId, "في صفحة الكود، جاري السحب...");
+        // فريم 6
+        frameId = await sendMovingFrame(page, chatId, frameId, "في صفحة الكود، جاري سحب الكود من usmail...");
         const code = await getVerificationCode(username, chatId);
         if (!code) throw new Error("الكود لم يصل.");
 
-        // فريم 7: كتابة الكود
+        // فريم 7
         await page.keyboard.type(code, { delay: 100 });
-        frameMessageId = await sendSteadyFrame(page, chatId, frameMessageId, `تم كتابة الكود: ${code}`);
-        await sleep(8000); // انتظر وقت طويل لتاريخ الميلاد/الاسم
+        frameId = await sendMovingFrame(page, chatId, frameId, `تم إدخال الكود بنجاح: ${code}`);
+        await sleep(6000);
 
-        // فريم 8: إدخال الاسم
+        // فريم 8
         const nameInp = page.locator('input[name="name"]');
         if (await nameInp.isVisible()) {
             await nameInp.fill(fullName);
-            frameMessageId = await sendSteadyFrame(page, chatId, frameMessageId, `تم كتابة الاسم: ${fullName}`);
+            frameId = await sendMovingFrame(page, chatId, frameId, `إدخال الاسم: ${fullName}`);
             await page.keyboard.press('Enter');
             await sleep(5000);
         }
 
         const result = `${email}|${password}`;
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
-        await bot.sendMessage(chatId, `🎉 **مبروك! الحساب جاهز:**\n\`${result}\``, { parse_mode: 'Markdown' });
+        
+        // مسح آخر صورة بعد النجاح حتى يبقى الشات نظيف
+        if (frameId) await bot.deleteMessage(chatId, frameId).catch(() => {});
+        
+        await bot.sendMessage(chatId, `\`${result}\``, { parse_mode: 'Markdown' });
 
     } catch (error) {
-        await bot.sendMessage(chatId, `❌ خطأ في أي خطوة: ${error.message}`);
-        // صورة الخطأ النهائية ثابتة دائماً
-        if (page) await page.screenshot({ path: 'steady_error.png', fullPage: true });
-        if (fs.existsSync('steady_error.png')) await bot.sendPhoto(chatId, 'steady_error.png', { caption: 'آخر فريم قبل الفشل' });
+        await bot.sendMessage(chatId, `❌ خطأ: ${error.message}`);
+        // صورة الخطأ النهائية
+        if (page) {
+            const errBuffer = await page.screenshot({ fullPage: true });
+            await bot.sendPhoto(chatId, errBuffer, { caption: '📸 الشاشة وقت حدوث المشكلة' }, { filename: 'error.jpg', contentType: 'image/jpeg' });
+        }
     } finally {
         if (context) await context.close();
         try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch(e) {}
     }
 }
 
-bot.onText(/\/start/, (msg) => bot.sendMessage(msg.chat.id, "أهلاً نبيل! البوت جاهز مع نظام الفريمات الثابتة والمستقرة Steady Frames 📺\nاستخدم `/create 1`"));
+bot.onText(/\/start/, (msg) => bot.sendMessage(msg.chat.id, "أهلاً نبيل! البوت جاهز 📺\nاستخدم `/create 1`"));
 
 bot.onText(/\/create (.+)/, async (msg, match) => {
     if (isProcessing) return bot.sendMessage(msg.chat.id, "⚠️ البوت يعمل على حساب حالياً.");
@@ -189,4 +192,16 @@ bot.onText(/\/create (.+)/, async (msg, match) => {
     }
     isProcessing = false;
     bot.sendMessage(msg.chat.id, "🏁 انتهت جميع المهمات.");
+});
+
+bot.onText(/\/setproxy (.+)/, (msg, match) => {
+    let server = match[1].trim();
+    if (!server.startsWith('http://')) server = 'http://' + server;
+    activeProxy = { server };
+    bot.sendMessage(msg.chat.id, `✅ تم تفعيل البروكسي: \`${server}\``, { parse_mode: 'Markdown' });
+});
+
+bot.onText(/\/clearproxy/, (msg) => {
+    activeProxy = null;
+    bot.sendMessage(msg.chat.id, "🗑️ تم إيقاف البروكسي.");
 });
