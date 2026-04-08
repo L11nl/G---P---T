@@ -20,7 +20,7 @@ const ACCOUNTS_FILE = 'accounts.txt';
 let isProcessing = false;
 let activeProxy = null; 
 
-// إعدادات الـ API الجديد
+// إعدادات الـ API المخصص
 const API_BASE_URL = 'https://usmail.my.id';
 const API_LICENSE_KEY = 'USMAIL-166T-DEMO';
 
@@ -44,66 +44,56 @@ function generateSecurePassword() {
     return password.split('').sort(() => 0.5 - Math.random()).join('');
 }
 
-// 1. توليد الإيميل من الـ API المخصص
+// 1. توليد الإيميل من API usmail.my.id
 async function generateRandomEmail() {
     const username = `${faker.person.firstName().toLowerCase()}${crypto.randomBytes(3).toString('hex')}`;
     const headers = {
         'Accept': '*/*',
         'Accept-Encoding': 'gzip, deflate, br',
-        'Accept-Language': 'en-US,en;q=0.9,ar-IQ;q=0.8',
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         'X-License-Key': API_LICENSE_KEY,
         'Referer': `${API_BASE_URL}/room/master`
     };
 
     try {
         const response = await axios.get(`${API_BASE_URL}/api/public/rooms/master/domains`, { headers });
-        let domains = [];
-        
-        if (response.data && response.data.success && response.data.domains) {
-            domains = response.data.domains;
-        } else {
-            domains = ["usmail.my.id", "toolsmail.me", "funtechme.me", "doestech.web.id", "studentx.me", "lostsaga.me"];
-        }
-        
+        let domains = response.data?.success && response.data?.domains ? response.data.domains : ["usmail.my.id", "toolsmail.me", "funtechme.me", "doestech.web.id"];
         const domain = domains[Math.floor(Math.random() * domains.length)];
         return { email: `${username}@${domain}`, username: username };
     } catch (error) {
-        const fallbackDomains = ["usmail.my.id", "toolsmail.me", "funtechme.me"];
-        const domain = fallbackDomains[Math.floor(Math.random() * fallbackDomains.length)];
-        return { email: `${username}@${domain}`, username: username };
+        const fallback = ["usmail.my.id", "toolsmail.me"];
+        return { email: `${username}@${fallback[0]}`, username: username };
     }
 }
 
-// 2. جلب الكود من الـ API المخصص
+// 2. إصلاح جلب الكود من usmail.my.id
 async function getVerificationCode(username, chatId, maxRetries = 20) {
     const headers = {
         'Accept': '*/*',
         'Accept-Encoding': 'gzip, deflate, br',
-        'Accept-Language': 'en-US,en;q=0.9,ar-IQ;q=0.8',
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
         'X-License-Key': API_LICENSE_KEY,
         'Referer': `${API_BASE_URL}/room/${username}`
     };
 
-    // مسار الرسائل الافتراضي بناءً على مسار الدومينات
     const messagesUrl = `${API_BASE_URL}/api/public/rooms/${username}/messages`;
 
     for (let i = 0; i < maxRetries; i++) {
         try {
             const res = await axios.get(messagesUrl, { headers });
-            
-            // تحويل الاستجابة بالكامل لنص والبحث عن أي 6 أرقام متتالية (الكود)
             const dataStr = JSON.stringify(res.data);
-            const codeMatch = dataStr.match(/\b\d{6}\b/);
             
-            if (codeMatch) {
-                const code = codeMatch[0];
+            // سحب كل الأرقام اللي تتكون من 6 خانات
+            const codeMatches = dataStr.match(/\b\d{6}\b/g);
+            
+            if (codeMatches && codeMatches.length > 0) {
+                // نأخذ آخر 6 أرقام ظهرت بالـ JSON حتى نتجنب أخذ رقم الـ ID للرسالة بالخطأ
+                const code = codeMatches[codeMatches.length - 1];
                 await bot.sendMessage(chatId, `📩 **وصل الكود:** \`${code}\``, { parse_mode: 'Markdown' });
                 return code;
             }
         } catch (e) {}
-        await sleep(3000); // فحص سريع كل 3 ثواني
+        await sleep(3000); 
     }
     return null;
 }
@@ -128,8 +118,7 @@ async function createAccount(chatId, currentNum, total) {
         return false;
     }
 
-    const email = emailData.email;
-    const emailUsername = emailData.username; // استخرجنا اليوزرنيم حتى نستخدمه بالرسائل
+    const { email, username } = emailData;
     const fullName = `${faker.person.firstName()} ${faker.person.lastName()}`;
     
     await bot.editMessageText(`📧 \`${email}\`\n🔑 \`${password}\`\n🚀 سريع ومباشر!`, {
@@ -152,7 +141,6 @@ async function createAccount(chatId, currentNum, total) {
         page = await context.newPage();
 
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 45000 });
-        
         await simulateHumanActivityFast(page);
 
         const signupBtn = page.locator('button:has-text("Sign up")');
@@ -176,16 +164,15 @@ async function createAccount(chatId, currentNum, total) {
             if (e.message.includes("مرفوض")) throw e;
         }
 
-        bot.sendMessage(chatId, "⏳ بانتظار الكود...");
-        // استخدام اليوزرنيم الخاص بالإيميل لجلب الكود من الـ API
-        let code = await getVerificationCode(emailUsername, chatId, 15);
+        bot.sendMessage(chatId, "⏳ بانتظار الكود من usmail...");
+        let code = await getVerificationCode(username, chatId, 15);
         
         if (!code) {
             const resend = page.locator('button:has-text("Resend email"), a:has-text("Resend email")');
             if (await resend.isVisible({ timeout: 3000 })) {
                 await resend.click();
                 bot.sendMessage(chatId, "🔄 ضغطنا إعادة إرسال...");
-                code = await getVerificationCode(emailUsername, chatId, 10);
+                code = await getVerificationCode(username, chatId, 10);
             }
         }
 
@@ -203,7 +190,6 @@ async function createAccount(chatId, currentNum, total) {
             await sleep(3000);
         }
 
-        // الرسالة النظيفة فقط للنسخ
         const result = `${email}|${password}`;
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
         await bot.sendMessage(chatId, `\`${result}\``, { parse_mode: 'Markdown' });
@@ -213,14 +199,24 @@ async function createAccount(chatId, currentNum, total) {
 
     } catch (error) {
         await bot.sendMessage(chatId, `❌ خطأ: ${error.message}`);
+        
+        // 3. ميزة السكرين شوت ثابتة ولن تحذف
+        if (page) {
+            try {
+                const scPath = path.join(tempDir, 'error_screenshot.png');
+                await page.screenshot({ path: scPath, fullPage: true });
+                await bot.sendPhoto(chatId, scPath, { caption: `📸 لقطة شاشة للخطأ حتى تعرف وين توقف:` });
+            } catch (err) {
+                console.log("تعذر التقاط سكرين شوت", err);
+            }
+        }
+
         if (context) await context.close();
         return false;
     } finally {
         try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
     }
 }
-
-// ================= الأوامر =================
 
 bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id, "أهلاً نبيل! البوت مربوط بـ API موقع usmail.my.id 🚀\nاستخدم `/create 1`");
