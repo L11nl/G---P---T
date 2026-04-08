@@ -1,5 +1,5 @@
 const TelegramBot = require('node-telegram-bot-api');
-const { chromium } = require('playwright-extra'); // استخدمنا chromium مع extra
+const { chromium } = require('playwright-extra'); 
 const stealth = require('puppeteer-extra-plugin-stealth')();
 const axios = require('axios');
 const cheerio = require('cheerio');
@@ -8,11 +8,11 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// تفعيل وضع التخفي
 chromium.use(stealth);
 
-// جلب الإعدادات من Railway
+// جلب التوكن من Railway
 const BOT_TOKEN = process.env.BOT_TOKEN;
+
 if (!BOT_TOKEN) {
     console.error("❌ خطأ: BOT_TOKEN مفقود.");
     process.exit(1);
@@ -22,15 +22,15 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const ACCOUNTS_FILE = 'accounts.txt';
 let isProcessing = false;
 
+// متغير عالمي لحفظ البروكسي اللي تضيفه من البوت
+let activeProxy = null; 
+
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function generateSecurePassword() {
-    const length = 15;
     const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
     let password = "";
-    for (let i = 0; i < length; i++) {
-        password += charset[crypto.randomInt(0, charset.length)];
-    }
+    for (let i = 0; i < 15; i++) password += charset[crypto.randomInt(0, charset.length)];
     return password;
 }
 
@@ -80,38 +80,46 @@ async function createAccount(chatId, currentNum, total) {
     let context, page;
 
     try {
-        // تشغيل المتصفح بوضع التخفي الكامل
-        context = await chromium.launchPersistentContext(tempDir, { 
+        const browserOptions = {
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
             ignoreDefaultArgs: ["--enable-automation"]
-        });
+        };
+
+        // استخدام البروكسي إذا تم إضافته من التليجرام
+        if (activeProxy) {
+            bot.sendMessage(chatId, `🌍 جاري الاتصال عبر البروكسي:\n\`${activeProxy.server}\``, { parse_mode: 'Markdown' });
+            browserOptions.proxy = { server: activeProxy.server };
+            if (activeProxy.username && activeProxy.password) {
+                browserOptions.proxy.username = activeProxy.username;
+                browserOptions.proxy.password = activeProxy.password;
+            }
+        } else {
+            bot.sendMessage(chatId, "⚠️ تحذير: البوت يعمل بدون بروكسي.");
+        }
+
+        context = await chromium.launchPersistentContext(tempDir, browserOptions);
         page = await context.newPage();
 
-        await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded" });
-        await sleep(5000); // انتظار إضافي ليتجاوز كلاود فلير بهدوء
+        await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
+        await sleep(6000);
 
-        // محاولة تجاوز كلاود فلير إذا ظهر
-        bot.sendMessage(chatId, "🛡️ جاري فحص حماية Cloudflare...");
+        bot.sendMessage(chatId, "🛡️ جاري فحص الحماية...");
         try {
             const cfCheckbox = page.frameLocator('iframe').locator('input[type="checkbox"]');
             if (await cfCheckbox.isVisible({ timeout: 5000 })) {
                 await cfCheckbox.click();
-                await sleep(4000);
+                await sleep(5000);
             }
-        } catch(e) {
-            // لم يظهر كلاود فلير أو تم تجاوزه تلقائياً
-        }
+        } catch(e) {}
 
-        // مرحلة الإيميل
         await page.click('button:has-text("Sign up")', { timeout: 15000 }).catch(() => {});
         await sleep(3000);
         await page.fill('input[id="email-input"], input[name="email"]', email);
         await sleep(1000);
         await page.keyboard.press('Enter');
         
-        // مرحلة الباسورد
-        bot.sendMessage(chatId, "✍️ جاري كتابة الباسورد العشوائي...");
+        bot.sendMessage(chatId, "✍️ جاري كتابة الباسورد...");
         await sleep(6000);
         const passInput = page.locator('input[type="password"]');
         await passInput.waitFor({ state: 'visible', timeout: 15000 });
@@ -119,7 +127,6 @@ async function createAccount(chatId, currentNum, total) {
         await sleep(1000);
         await passInput.press('Enter');
 
-        // مرحلة الكود
         bot.sendMessage(chatId, "⏳ بانتظار كود التفعيل...");
         const code = await getVerificationCode(email);
         if (!code) throw new Error("لم يصل كود التفعيل.");
@@ -150,7 +157,41 @@ async function createAccount(chatId, currentNum, total) {
     }
 }
 
-bot.onText(/\/start/, (msg) => bot.sendMessage(msg.chat.id, "أهلاً نبيل! دز `/create 1` حتى أبلش."));
+// ================= أوامر البوت =================
+
+bot.onText(/\/start/, (msg) => {
+    const text = `أهلاً نبيل! 🤖\n\n` +
+                 `🔹 لإنشاء حسابات: \`/create 1\`\n` +
+                 `🔹 لإضافة بروكسي: \`/setproxy IP:PORT\`\n` +
+                 `🔹 لمسح البروكسي: \`/clearproxy\``;
+    bot.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown' });
+});
+
+bot.onText(/\/setproxy (.+)/, (msg, match) => {
+    const parts = match[1].split(' ');
+    let server = parts[0];
+    
+    // تأكد من إضافة http:// إذا ما كانت موجودة
+    if (!server.startsWith('http://') && !server.startsWith('socks5://')) {
+        server = 'http://' + server;
+    }
+
+    activeProxy = { server: server };
+    
+    // إذا اكو يوزر وباسورد
+    if (parts.length >= 3) {
+        activeProxy.username = parts[1];
+        activeProxy.password = parts[2];
+        bot.sendMessage(msg.chat.id, `✅ تم حفظ البروكسي المدفوع بنجاح!\nالسيرفر: \`${server}\``, { parse_mode: 'Markdown' });
+    } else {
+        bot.sendMessage(msg.chat.id, `✅ تم حفظ البروكسي بنجاح!\nالسيرفر: \`${server}\``, { parse_mode: 'Markdown' });
+    }
+});
+
+bot.onText(/\/clearproxy/, (msg) => {
+    activeProxy = null;
+    bot.sendMessage(msg.chat.id, "🗑️ تم مسح البروكسي! البوت هسه راح يشتغل على اتصال السيرفر المباشر.");
+});
 
 bot.onText(/\/create (.+)/, async (msg, match) => {
     if (isProcessing) return bot.sendMessage(msg.chat.id, "⚠️ البوت ديشتغل حالياً، اصبر شوية.");
