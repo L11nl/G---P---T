@@ -1,0 +1,16 @@
+here{
+  "name": "chatgpt-bot-railway",
+  "version": "1.0.0",
+  "description": "ChatGPT Account Creator Bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^8.4.1",
+    "axios": "^1.6.8",
+    "cheerio": "^1.0.0-rc.12",
+    "node-telegram-bot-api": "^0.65.0",
+    "playwright": "^1.42.1"
+  }
+}
