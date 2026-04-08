@@ -67,7 +67,7 @@ async function generateRandomEmail() {
     }
 }
 
-// 2. إصلاح جلب الكود من usmail.my.id (نسخة محسّنة)
+// 2. إصلاح جلب الكود من usmail.my.id (محسّنة مع احتمالات متعددة)
 async function getVerificationCode(username, chatId, maxRetries = 20) {
     const headers = {
         'Accept': '*/*',
@@ -80,20 +80,37 @@ async function getVerificationCode(username, chatId, maxRetries = 20) {
     for (let i = 0; i < maxRetries; i++) {
         try {
             const res = await axios.get(messagesUrl, { headers });
+            
+            // البحث في كل مكان محتمل عن كود 6 أرقام
+            let foundCode = null;
+            
+            // 1. إذا كانت البيانات تحتوي على مصفوفة messages
             if (res.data?.success && Array.isArray(res.data.messages)) {
-                // نبحث في كل الرسائل عن أول كود مكون من 6 أرقام
                 for (const msg of res.data.messages) {
                     const text = (msg.subject || '') + ' ' + (msg.text || '') + ' ' + (msg.html || '');
                     const match = text.match(/\b\d{6}\b/);
                     if (match) {
-                        const code = match[0];
-                        await bot.sendMessage(chatId, `📩 **وصل الكود:** \`${code}\``, { parse_mode: 'Markdown' });
-                        return code;
+                        foundCode = match[0];
+                        break;
                     }
                 }
             }
+            
+            // 2. البحث في النص الخام للاستجابة بالكامل كخطة بديلة
+            if (!foundCode) {
+                const rawText = JSON.stringify(res.data);
+                const match = rawText.match(/\b\d{6}\b/g);
+                if (match && match.length > 0) {
+                    foundCode = match[match.length - 1]; // نأخذ آخر ظهور
+                }
+            }
+
+            if (foundCode) {
+                await bot.sendMessage(chatId, `📩 **وصل الكود:** \`${foundCode}\``, { parse_mode: 'Markdown' });
+                return foundCode;
+            }
         } catch (e) {
-            // نتجاهل الأخطاء المؤقتة ونستمر بالمحاولة
+            // تجاهل الأخطاء المؤقتة
         }
         await sleep(3000);
     }
@@ -106,6 +123,27 @@ async function simulateHumanActivityFast(page) {
         await sleep(300);
         await page.mouse.move(500, 400, { steps: 3 });
     } catch (e) { }
+}
+
+// دالة جديدة لالتقاط لقطة شاشة وإرسالها كل 10 ثواني (تعمل في الخلفية)
+function startScreenshotInterval(page, chatId, stopSignal) {
+    const interval = setInterval(async () => {
+        if (stopSignal.stopped) {
+            clearInterval(interval);
+            return;
+        }
+        try {
+            if (page && !page.isClosed()) {
+                const screenshotPath = path.join(__dirname, `screenshot_${Date.now()}.png`);
+                await page.screenshot({ path: screenshotPath, fullPage: true });
+                await bot.sendPhoto(chatId, screenshotPath, { caption: `📸 لقطة شاشة دورية - ${new Date().toLocaleTimeString()}` });
+                fs.unlinkSync(screenshotPath); // حذف الملف بعد الإرسال لتوفير المساحة
+            }
+        } catch (e) {
+            console.log("تعذر التقاط لقطة شاشة دورية:", e.message);
+        }
+    }, 10000); // كل 10 ثواني
+    return interval;
 }
 
 async function createAccount(chatId, currentNum, total) {
@@ -129,6 +167,8 @@ async function createAccount(chatId, currentNum, total) {
 
     const tempDir = fs.mkdtempSync(path.join(__dirname, 'chatgpt_fast_'));
     let context, page;
+    const stopSignal = { stopped: false };
+    let screenshotInterval = null;
 
     try {
         const browserOptions = {
@@ -141,6 +181,9 @@ async function createAccount(chatId, currentNum, total) {
 
         context = await chromium.launchPersistentContext(tempDir, browserOptions);
         page = await context.newPage();
+
+        // بدء التقاط لقطات الشاشة الدورية
+        screenshotInterval = startScreenshotInterval(page, chatId, stopSignal);
 
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 45000 });
         await simulateHumanActivityFast(page);
@@ -183,11 +226,40 @@ async function createAccount(chatId, currentNum, total) {
 
         if (!code) throw new Error("الكود ما وصل.");
 
-        // تحسين locator حقل الكود
-        const codeInput = page.locator('input[aria-label="Verification code"], input[inputmode="numeric"], input[type="text"]').first();
-        await codeInput.waitFor({ state: 'visible', timeout: 10000 });
-        await codeInput.fill(code);
+        // === تحسينات للعثور على حقل الكود بجميع الاحتمالات ===
+        // نستخدم عدة محاولات و locators مختلفة
+        let codeInputFilled = false;
+        const possibleSelectors = [
+            'input[aria-label="Verification code"]',
+            'input[inputmode="numeric"]',
+            'input[placeholder*="code" i]',
+            'input[placeholder*="verification" i]',
+            'input[type="text"]',
+            'input[type="number"]',
+            'input:not([name="name"]):not([type="password"]):not([type="email"])'
+        ];
 
+        for (const selector of possibleSelectors) {
+            try {
+                const input = page.locator(selector).first();
+                await input.waitFor({ state: 'visible', timeout: 5000 });
+                await input.fill(code);
+                codeInputFilled = true;
+                console.log(`تم ملء الكود باستخدام selector: ${selector}`);
+                break;
+            } catch (e) {
+                // تجاهل وانتقل للمحاولة التالية
+            }
+        }
+
+        if (!codeInputFilled) {
+            // محاولة أخيرة باستخدام التركيز على أي حقل ظاهر
+            await page.keyboard.press('Tab');
+            await sleep(500);
+            await page.keyboard.type(code);
+        }
+
+        // متابعة باقي الخطوات
         const nameInput = page.locator('input[name="name"]');
         await nameInput.waitFor({ state: 'visible', timeout: 10000 }).catch(() => { });
         if (await nameInput.isVisible()) {
@@ -200,13 +272,17 @@ async function createAccount(chatId, currentNum, total) {
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
         await bot.sendMessage(chatId, `\`${result}\``, { parse_mode: 'Markdown' });
 
+        // إيقاف لقطات الشاشة الدورية
+        stopSignal.stopped = true;
+        if (screenshotInterval) clearInterval(screenshotInterval);
+
         await context.close();
         return true;
 
     } catch (error) {
         await bot.sendMessage(chatId, `❌ خطأ: ${error.message}`);
 
-        // ميزة السكرين شوت ثابتة
+        // ميزة السكرين شوت ثابتة (لقطة أخيرة للخطأ)
         if (page) {
             try {
                 const scPath = path.join(tempDir, 'error_screenshot.png');
@@ -216,6 +292,10 @@ async function createAccount(chatId, currentNum, total) {
                 console.log("تعذر التقاط سكرين شوت", err);
             }
         }
+
+        // إيقاف الفاصل الزمني
+        stopSignal.stopped = true;
+        if (screenshotInterval) clearInterval(screenshotInterval);
 
         if (context) await context.close();
         return false;
