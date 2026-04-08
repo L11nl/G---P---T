@@ -1,5 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
-const { firefox } = require('playwright');
+const { chromium } = require('playwright-extra'); // استخدمنا chromium مع extra
+const stealth = require('puppeteer-extra-plugin-stealth')();
 const axios = require('axios');
 const cheerio = require('cheerio');
 const { faker } = require('@faker-js/faker');
@@ -7,12 +8,13 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+// تفعيل وضع التخفي
+chromium.use(stealth);
+
 // جلب الإعدادات من Railway
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const ADMIN_ID = process.env.ADMIN_ID ? parseInt(process.env.ADMIN_ID) : 0;
-
 if (!BOT_TOKEN) {
-    console.error("❌ خطأ: BOT_TOKEN مفقود في إعدادات Railway.");
+    console.error("❌ خطأ: BOT_TOKEN مفقود.");
     process.exit(1);
 }
 
@@ -22,14 +24,12 @@ let isProcessing = false;
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// دالة توليد باسورد عشوائي قوي (أكثر من 12 حرف)
 function generateSecurePassword() {
     const length = 15;
     const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
     let password = "";
     for (let i = 0; i < length; i++) {
-        const randomIndex = crypto.randomInt(0, charset.length);
-        password += charset[randomIndex];
+        password += charset[crypto.randomInt(0, charset.length)];
     }
     return password;
 }
@@ -46,8 +46,7 @@ async function generateRandomEmail() {
             if (domainText.includes('.')) domains.push(domainText);
         });
         const domain = domains.length > 0 ? domains[Math.floor(Math.random() * domains.length)] : "xezo.live";
-        const email = `${faker.person.firstName()}${faker.person.lastName()}${crypto.randomBytes(3).toString('hex')}@${domain}`.toLowerCase();
-        return email;
+        return `${faker.person.firstName()}${faker.person.lastName()}${crypto.randomBytes(3).toString('hex')}@${domain}`.toLowerCase();
     } catch (error) {
         throw new Error("فشل في توليد الإيميل.");
     }
@@ -59,8 +58,7 @@ async function getVerificationCode(email, maxRetries = 15) {
     for (let i = 0; i < maxRetries; i++) {
         try {
             const res = await axios.get(inboxUrl, { headers: { "user-agent": "Mozilla/5.0" } });
-            const $ = cheerio.load(res.data);
-            const codeMatch = $("body").text().match(/\b\d{6}\b/);
+            const codeMatch = cheerio.load(res.data)("body").text().match(/\b\d{6}\b/);
             if (codeMatch) return codeMatch[0];
         } catch (e) {}
         await sleep(5000);
@@ -71,10 +69,10 @@ async function getVerificationCode(email, maxRetries = 15) {
 async function createAccount(chatId, currentNum, total) {
     const statusMsg = await bot.sendMessage(chatId, `⚙️ جاري العمل على الحساب [${currentNum}/${total}]...`);
     const email = await generateRandomEmail();
-    const password = generateSecurePassword(); // توليد الباسورد العشوائي هنا
+    const password = generateSecurePassword();
     const fullName = `${faker.person.firstName()} ${faker.person.lastName()}`;
     
-    await bot.editMessageText(`📧 إيميل: \`${email}\`\n🔑 باسورد عشوائي: \`${password}\``, {
+    await bot.editMessageText(`📧 إيميل: \`${email}\`\n🔑 باسورد: \`${password}\``, {
         chat_id: chatId, message_id: statusMsg.message_id, parse_mode: 'Markdown'
     });
 
@@ -82,21 +80,39 @@ async function createAccount(chatId, currentNum, total) {
     let context, page;
 
     try {
-        context = await firefox.launchPersistentContext(tempDir, { headless: true });
+        // تشغيل المتصفح بوضع التخفي الكامل
+        context = await chromium.launchPersistentContext(tempDir, { 
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
+            ignoreDefaultArgs: ["--enable-automation"]
+        });
         page = await context.newPage();
 
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded" });
-        await sleep(4000);
+        await sleep(5000); // انتظار إضافي ليتجاوز كلاود فلير بهدوء
+
+        // محاولة تجاوز كلاود فلير إذا ظهر
+        bot.sendMessage(chatId, "🛡️ جاري فحص حماية Cloudflare...");
+        try {
+            const cfCheckbox = page.frameLocator('iframe').locator('input[type="checkbox"]');
+            if (await cfCheckbox.isVisible({ timeout: 5000 })) {
+                await cfCheckbox.click();
+                await sleep(4000);
+            }
+        } catch(e) {
+            // لم يظهر كلاود فلير أو تم تجاوزه تلقائياً
+        }
 
         // مرحلة الإيميل
-        await page.click('button:has-text("Sign up")', { timeout: 10000 }).catch(() => {});
-        await sleep(2000);
+        await page.click('button:has-text("Sign up")', { timeout: 15000 }).catch(() => {});
+        await sleep(3000);
         await page.fill('input[id="email-input"], input[name="email"]', email);
+        await sleep(1000);
         await page.keyboard.press('Enter');
         
         // مرحلة الباسورد
         bot.sendMessage(chatId, "✍️ جاري كتابة الباسورد العشوائي...");
-        await sleep(5000);
+        await sleep(6000);
         const passInput = page.locator('input[type="password"]');
         await passInput.waitFor({ state: 'visible', timeout: 15000 });
         await passInput.fill(password);
@@ -111,9 +127,7 @@ async function createAccount(chatId, currentNum, total) {
         await page.fill('input[aria-label="Verification code"], input[type="text"]', code);
         await sleep(3000);
 
-        // إدخال الاسم وتاريخ الميلاد
         await page.fill('input[name="name"]', fullName).catch(() => {});
-        // (إضافة كود تاريخ الميلاد هنا كما في النسخ السابقة...)
 
         const result = `${email}|${password}`;
         fs.appendFileSync(ACCOUNTS_FILE, result + '\n');
@@ -127,7 +141,7 @@ async function createAccount(chatId, currentNum, total) {
         if (page) {
             const sc = path.join(tempDir, 'fail.png');
             await page.screenshot({ path: sc });
-            await bot.sendPhoto(chatId, sc, { caption: `آخر مشكلة ويه الباسورد: ${password}` });
+            await bot.sendPhoto(chatId, sc, { caption: `صورة المشكلة الأخيرة:` });
         }
         if (context) await context.close();
         return false;
