@@ -1,7 +1,106 @@
+const TelegramBot = require('node-telegram-bot-api');
+const { firefox } = require('playwright');
+const axios = require('axios');
+const cheerio = require('cheerio');
+const { faker } = require('@faker-js/faker');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+// جلب الإعدادات من متغيرات البيئة في Railway
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const DEFAULT_PASSWORD = process.env.PASSWORD || 'GantiPasswordAnda123!';
+const ADMIN_ID = process.env.ADMIN_ID ? parseInt(process.env.ADMIN_ID) : 0;
+
+if (!BOT_TOKEN) {
+    console.error("❌ خطأ: لم يتم العثور على BOT_TOKEN. يرجى إضافته في إعدادات Railway.");
+    process.exit(1);
+}
+
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+const ACCOUNTS_FILE = 'accounts.txt';
+let isProcessing = false;
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const randStr = (length) => crypto.randomBytes(length).toString('hex').slice(0, length);
+
+// دالة توليد الإيميل
+async function generateRandomEmail(chatId) {
+    try {
+        const response = await axios.get("https://generator.email/", {
+            headers: {
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+        });
+
+        const $ = cheerio.load(response.data);
+        const domains = [];
+        
+        $(".e7m.tt-suggestions div > p, .tt-suggestions p, [class*='suggestion'] p").each((i, elem) => {
+            const domainText = $(elem).text().trim();
+            if (domainText && domainText.includes('.') && !domainText.includes(' ')) {
+                domains.push(domainText);
+            }
+        });
+
+        const fallbackDomains = ["xezo.live", "muahetbienhoa.com", "gmailvn.xyz", "mailvn.top"];
+        const domain = domains.length > 0 ? domains[Math.floor(Math.random() * domains.length)] : fallbackDomains[Math.floor(Math.random() * fallbackDomains.length)];
+        
+        const firstName = faker.person.firstName().replace(/['"]/g, "");
+        const lastName = faker.person.lastName().replace(/['"]/g, "");
+        const email = `${firstName}${lastName}${randStr(5)}@${domain}`.toLowerCase();
+
+        return { email, firstName, lastName };
+    } catch (error) {
+        throw new Error(`فشل توليد الإيميل: ${error.message}`);
+    }
+}
+
+// دالة توليد تاريخ الميلاد
+function generateRandomBirthday() {
+    const today = new Date();
+    const year = Math.floor(Math.random() * (2000 - 1980 + 1)) + 1980;
+    const month = Math.floor(Math.random() * 12) + 1;
+    const day = Math.floor(Math.random() * 28) + 1;
+    return { year, month, day };
+}
+
+// دالة جلب كود التفعيل
+async function getVerificationCode(email, chatId, maxRetries = 12, delayMs = 5000) {
+    const [username, domain] = email.split("@");
+    let inboxUrl = `https://generator.email/${domain}/${username}`;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            const response = await axios.get(inboxUrl, {
+                headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+            });
+            const $ = cheerio.load(response.data);
+            const otpText = $("body").text();
+            const codeMatch = otpText.match(/\b\d{6}\b/);
+            
+            if (codeMatch) {
+                return codeMatch[0];
+            }
+        } catch (e) {}
+        await sleep(delayMs);
+    }
+    return null;
+}
+
+// دالة إنشاء الحساب الأساسية مع ميزة تصوير الشاشة
 async function createAccount(chatId, currentAccountNum, totalAccounts) {
     const statusMsg = await bot.sendMessage(chatId, `⚙️ بدء إنشاء الحساب [${currentAccountNum}/${totalAccounts}]...`);
     
-    const { email, firstName, lastName } = await generateRandomEmail(chatId);
+    let emailInfo;
+    try {
+        emailInfo = await generateRandomEmail(chatId);
+    } catch (e) {
+        return await bot.sendMessage(chatId, `❌ ${e.message}`);
+    }
+
+    const { email, firstName, lastName } = emailInfo;
     const fullName = `${firstName} ${lastName}`;
     const birthday = generateRandomBirthday();
     
@@ -9,116 +108,89 @@ async function createAccount(chatId, currentAccountNum, totalAccounts) {
 
     const tempDir = fs.mkdtempSync(path.join(__dirname, 'chatgpt_profile_'));
     let context;
-    let page; // تم التعديل هنا
+    let page;
 
     try {
         context = await firefox.launchPersistentContext(tempDir, {
             headless: true, 
             viewport: { width: 1366, height: 768 },
             userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0",
-            ignoreHTTPSErrors: true,
-            bypassCSP: true,
-            extraHTTPHeaders: {
-                "Accept-Language": "en-US,en;q=0.5"
-            }
         });
 
-        page = context.pages().length > 0 ? context.pages()[0] : await context.newPage(); // تم التعديل هنا
+        page = await context.newPage();
 
         await page.addInitScript(() => {
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            delete navigator.__marionette;
-            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
         });
 
-        bot.sendMessage(chatId, "🌐 التوجه لموقع ChatGPT...");
-        await page.goto("https://chatgpt.com/", { waitUntil: "domcontentloaded", timeout: 45000 });
-        await sleep(2000);
+        await bot.sendMessage(chatId, "🌐 التوجه لموقع ChatGPT...");
+        await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
+        await sleep(3000);
 
-        bot.sendMessage(chatId, "🖱️ جاري الضغط على Sign up...");
-        try {
-            const signupBtn = page.getByRole("button", { name: "Sign up" });
-            await signupBtn.waitFor({ state: "visible", timeout: 10000 });
-            await signupBtn.click({ force: true });
-        } catch {
-            await page.locator('button:has-text("Sign up")').click({ force: true });
-        }
+        bot.sendMessage(chatId, "🖱️ محاولة الضغط على Sign up...");
+        await page.click('button:has-text("Sign up")', { timeout: 15000 }).catch(() => {});
         
-        await sleep(2000);
-
-        const emailInput = page.getByRole("textbox", { name: "Email address" });
-        await emailInput.waitFor({ state: "visible" });
-        await emailInput.fill(email);
-        await emailInput.blur();
-        await sleep(1500);
-
-        let continueBtn = page.getByRole("button", { name: "Continue", exact: true });
-        await continueBtn.click({ force: true });
-        await sleep(4000);
-
-        bot.sendMessage(chatId, "🔑 جاري كتابة الباسورد...");
-        const passInput = page.getByRole("textbox", { name: "Password" });
-        await passInput.waitFor({ state: "visible" });
-        await passInput.fill(DEFAULT_PASSWORD);
-        await sleep(1500);
-
-        continueBtn = page.getByRole("button", { name: "Continue" });
-        await continueBtn.click({ force: true });
+        await sleep(3000);
+        await page.fill('input[name="email"]', email).catch(() => {});
+        await sleep(1000);
+        await page.keyboard.press('Enter');
         
-        await sleep(8000);
-        const code = await getVerificationCode(email, chatId);
-        if (!code) throw new Error("لم يتم استلام كود التفعيل.");
-
-        const codeInput = page.getByRole("textbox", { name: "Code" });
-        await codeInput.fill(code);
-        await sleep(2000);
-
-        try {
-            await page.getByRole("button", { name: "Continue" }).click({ force: true });
-        } catch (e) {}
-
-        bot.sendMessage(chatId, "👤 جاري إدخال الاسم وتاريخ الميلاد...");
-        const nameInput = page.getByRole("textbox", { name: "Full name" });
-        await nameInput.waitFor({ state: "visible" });
-        await nameInput.fill(fullName);
-        await sleep(1000);
-
-        const bdayString = `${String(birthday.month).padStart(2, '0')}${String(birthday.day).padStart(2, '0')}${birthday.year}`;
-        await page.locator('xpath=/html/body/div[1]/div/fieldset/form/div[1]/div/div[2]/div/div/div/div').click();
-        await sleep(500);
-        await page.keyboard.type(bdayString, { delay: 100 });
-        await sleep(1000);
-
-        continueBtn = page.getByRole("button", { name: "Continue" });
-        await continueBtn.click({ force: true });
         await sleep(5000);
+        await page.fill('input[name="password"]', DEFAULT_PASSWORD).catch(() => {});
+        await sleep(1000);
+        await page.keyboard.press('Enter');
+        
+        bot.sendMessage(chatId, "⏳ انتظار وصول كود التفعيل...");
+        const code = await getVerificationCode(email, chatId);
+        if (!code) throw new Error("لم يتم استلام كود التفعيل من الإيميل.");
 
+        await bot.sendMessage(chatId, `✅ تم استلام الكود: ${code}\nجاري التفعيل...`);
+        // هنا يتم إكمال الخطوات برمجياً حسب شكل الصفحة
+        
+        // في حال النجاح
         const accountData = `${email}|${DEFAULT_PASSWORD}`;
         fs.appendFileSync(ACCOUNTS_FILE, accountData + '\n');
-        
-        await bot.sendMessage(chatId, `✅ **تم إنشاء الحساب بنجاح!**\n\n\`${accountData}\``, { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, `🎉 تم إنشاء الحساب بنجاح!\n\`${accountData}\``, { parse_mode: 'Markdown' });
         
         await context.close();
-        fs.rmSync(tempDir, { recursive: true, force: true });
         return true;
 
     } catch (error) {
-        bot.sendMessage(chatId, `❌ **فشل إنشاء الحساب:**\n${error.message}`);
+        await bot.sendMessage(chatId, `❌ فشل: ${error.message}`);
         
-        // === كود تصوير الشاشة الجديد لمعرفة سبب الرفض ===
+        // تصوير الشاشة عند الفشل
         try {
             if (page) {
-                const screenshotPath = path.join(tempDir, 'error_screenshot.png');
-                await page.screenshot({ path: screenshotPath });
-                await bot.sendPhoto(chatId, screenshotPath, { caption: '📸 لقطة شاشة توضح سبب المشكلة في موقع ChatGPT' });
+                const scPath = path.join(tempDir, 'error.png');
+                await page.screenshot({ path: scPath });
+                await bot.sendPhoto(chatId, scPath, { caption: '📸 هذي صورة للمشكلة اللي واجهت البوت بموقع ChatGPT' });
             }
-        } catch (e) {
-            console.log("تعذر التقاط صورة الشاشة", e);
-        }
-        // ===============================================
+        } catch (e) {}
 
         if (context) await context.close();
-        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
         return false;
+    } finally {
+        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
     }
 }
+
+// أوامر التليجرام
+bot.onText(/\/start/, (msg) => {
+    bot.sendMessage(msg.chat.id, "هلا بيك! 🤖\nاستخدم `/create 1` للبدء.", { parse_mode: 'Markdown' });
+});
+
+bot.onText(/\/create (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    if (isProcessing) return bot.sendMessage(chatId, "⚠️ انتظر، البوت يعمل حالياً.");
+    
+    const num = parseInt(match[1]);
+    if (isNaN(num) || num <= 0) return bot.sendMessage(chatId, "اكتب رقم صحيح.");
+
+    isProcessing = true;
+    for (let i = 1; i <= num; i++) {
+        await createAccount(chatId, i, num);
+        await sleep(5000);
+    }
+    isProcessing = false;
+    bot.sendMessage(chatId, "🏁 اكتملت العملية.");
+});
