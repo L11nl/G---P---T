@@ -21,7 +21,7 @@ let isProcessing = false;
 let activeProxy = null;
 
 const API_BASE_URL = 'https://usmail.my.id';
-const API_LICENSE_KEY = 'USMAIL-166T-DEMO';
+const API_LICENSE_KEY = 'USMAIL-166T-DEMO'; // المفتاح المطلوب
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -37,9 +37,6 @@ async function generateRandomEmail() {
     const username = `${faker.person.firstName().toLowerCase()}${crypto.randomBytes(3).toString('hex')}`;
     const headers = {
         'Accept': '*/*',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Accept-Language': 'en-US,en;q=0.9,ar-IQ;q=0.8,ar;q=0.7',
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
         'X-License-Key': API_LICENSE_KEY,
         'Referer': `${API_BASE_URL}/room/master`
     };
@@ -112,13 +109,39 @@ async function createAccount(chatId, current, total) {
         await sleep(5000);
 
         // ==========================================
-        // الانتقال لصفحة الإيميل لتصويرها وسحب الكود
+        // الانتقال لصفحة الإيميل لتنفيذ طلب تسجيل الدخول بالمفتاح
         // ==========================================
-        frameId = await sendMovingFrame(page, chatId, frameId, "طلب رمز التحقق.. جاري فتح صندوق الوارد 🔄");
+        frameId = await sendMovingFrame(page, chatId, frameId, "طلب رمز التحقق.. جاري فتح صفحة الإيميل والمفتاح 🔄");
         
-        emailPage = await context.newPage(); // فتح تاب جديد
-        await emailPage.goto(`${API_BASE_URL}/room/${username}`, { waitUntil: "domcontentloaded" });
-        frameId = await sendMovingFrame(emailPage, chatId, frameId, `صندوق الوارد للإيميل: ${email}`);
+        emailPage = await context.newPage(); // فتح تاب جديد لموقع الإيميل
+        
+        // الانتقال لصفحة تسجيل الدخول بالمفتاح المذكورة في الصورة
+        await emailPage.goto(`${API_BASE_URL}/room/master`, { waitUntil: "domcontentloaded" });
+        frameId = await sendMovingFrame(emailPage, chatId, frameId, `جاري وضع المفتاح ${API_LICENSE_KEY} للدخول..`);
+
+        // تنفيذ عملية تسجيل الدخول كما في الصورة (image_1.png)
+        try {
+            const keyInput = emailPage.locator('input[name="key"]');
+            await keyInput.waitFor({ state: 'visible', timeout: 10000 });
+            await keyInput.fill(API_LICENSE_KEY); // وضع المفتاح تلقائياً
+            await sleep(1000);
+            
+            frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم وضع المفتاح.. جاري الضغط على ENTER للمتابعة 🖱️`);
+            
+            const enterBtn = emailPage.locator('button:has-text("ENTER")');
+            await enterBtn.click();
+            await sleep(2000);
+            
+            // الانتظار حتى يتحول الرابط إلى رابط صندوق الإيميل المخصص للإيميل المستخدم
+            await emailPage.waitForURL(`${API_BASE_URL}/room/${username}`, { timeout: 15000 });
+        } catch(e) {
+            console.log("تعذر تسجيل الدخول بالمفتاح، جاري محاولة الدخول المباشر...");
+            // في حال فشل تسجيل الدخول بالمفتاح، نحاول الدخول المباشر كما كان الكود القديم
+            await emailPage.goto(`${API_BASE_URL}/room/${username}`, { waitUntil: "domcontentloaded" });
+        }
+
+        // الآن تم الدخول للصندوق، نأخذ فريم أول
+        frameId = await sendMovingFrame(emailPage, chatId, frameId, `صندوق الوارد للإيميل (الدخول تم): ${email}`);
 
         let code = null;
         const headers = {
@@ -135,12 +158,11 @@ async function createAccount(chatId, current, total) {
                 const matches = JSON.stringify(res.data).match(/\b\d{6}\b/g);
                 if (matches) {
                     code = matches[matches.length - 1];
-                    frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم استلام الكود: ${code}`);
+                    frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم استلام الكود بنجاح: ${code}`);
                     break;
                 }
             } catch (e) {}
             
-            // تحديث الصورة كل محاولتين حتى تبين الحركة
             if (i % 2 === 0 && !code) {
                 frameId = await sendMovingFrame(emailPage, chatId, frameId, `⏳ ننتظر وصول رسالة OpenAI... (محاولة ${i+1})`);
             }
@@ -149,20 +171,19 @@ async function createAccount(chatId, current, total) {
 
         if (!code) throw new Error("لم يصل الكود للصندوق.");
 
-        // إغلاق تاب الإيميل والعودة لـ ChatGPT
-        await emailPage.close();
-        await page.bringToFront();
+        await emailPage.close(); // إغلاق تاب الإيميل
+        await page.bringToFront(); // العودة لـ ChatGPT
         frameId = await sendMovingFrame(page, chatId, frameId, "العودة لـ ChatGPT لإدخال الكود 🔙");
         await sleep(1000);
 
-        // إدخال الكود بطريقة مضمونة (النقر ثم الكتابة)
+        // إدخال الكود (النقر ثم الكتابة لضمان التوزيع على المربعات)
         const codeInputSelectors = ['input[aria-label="Verification code"]', 'input[type="text"]', 'input[inputmode="numeric"]'];
         let isCodeFilled = false;
         
         for (const sel of codeInputSelectors) {
             const input = page.locator(sel).first();
             if (await input.isVisible().catch(()=>false)) {
-                await input.click(); // النقر ضروري جداً هنا
+                await input.click();
                 await input.fill(code);
                 isCodeFilled = true;
                 break;
@@ -189,13 +210,12 @@ async function createAccount(chatId, current, total) {
         const result = `${email}|${password}`;
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
         
-        // تنظيف الشات من آخر صورة
         if (frameId) await bot.deleteMessage(chatId, frameId).catch(() => {});
         await bot.sendMessage(chatId, `\`${result}\``, { parse_mode: 'Markdown' });
 
     } catch (error) {
         await bot.sendMessage(chatId, `❌ توقف العمل: ${error.message}`);
-        // صورة الخطأ النهائية الثابتة
+        // صورة الخطأ النهائية
         if (page) {
             const errBuffer = await page.screenshot({ fullPage: true, quality: 75, type: 'jpeg' });
             await bot.sendPhoto(chatId, errBuffer, { caption: '📸 الشاشة وقت حدوث المشكلة' }, { filename: 'error.jpg', contentType: 'image/jpeg' });
@@ -206,7 +226,10 @@ async function createAccount(chatId, current, total) {
     }
 }
 
-bot.onText(/\/start/, (msg) => bot.sendMessage(msg.chat.id, "أهلاً نبيل! البوت جاهز 📺\nاستخدم `/create 1`"));
+// 2. تحديث رسالة ستارت إلى نسخة 14
+bot.onText(/\/start/, (msg) => {
+    bot.sendMessage(msg.chat.id, "👋 أهلاً نبيل! البوت المحدث (نسخة 14) جاهز لإنشاء حسابات ChatGPT على دومين asistx.net بدقة واحترافية عالية 🚀\nاستخدم أمر `/create 1` للبدء.");
+});
 
 bot.onText(/\/create (.+)/, async (msg, match) => {
     if (isProcessing) return bot.sendMessage(msg.chat.id, "⚠️ البوت يعمل على حساب حالياً.");
