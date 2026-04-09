@@ -20,78 +20,12 @@ const ACCOUNTS_FILE = 'accounts.txt';
 let isProcessing = false;
 let activeProxy = null;
 
-// ========== إعدادات API البريد الجديد ==========
-const API_BASE = 'https://usmail.my.id';
-const LICENSE_KEY = 'USMAIL-166T-DEMO';
-
-/**
- * تسجيل بريد إلكتروني جديد
- */
-async function registerEmail(email) {
-    try {
-        const response = await axios.post(
-            `${API_BASE}/api/public/rooms/master/register-email`,
-            { email: email },
-            {
-                headers: {
-                    'X-License-Key': LICENSE_KEY,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 10000
-            }
-        );
-        return response.data.success === true;
-    } catch (error) {
-        console.error('فشل تسجيل البريد:', error.response?.data || error.message);
-        return false;
-    }
-}
-
-/**
- * جلب جميع الرسائل الواردة لبريد معين
- */
-async function fetchInbox(email) {
-    const encodedEmail = encodeURIComponent(email);
-    try {
-        const response = await axios.get(`${API_BASE}/api/emails/${encodedEmail}`, {
-            timeout: 10000
-        });
-        return response.data;
-    } catch (error) {
-        console.error('فشل جلب الرسائل:', error.response?.status);
-        return [];
-    }
-}
-
-/**
- * انتظار وصول كود تفعيل من البريد
- */
-async function waitForVerificationCode(email, maxWaitSeconds = 120) {
-    const startTime = Date.now();
-    console.log(`⏳ في انتظار وصول رسالة إلى ${email} ...`);
-
-    while ((Date.now() - startTime) < maxWaitSeconds * 1000) {
-        const messages = await fetchInbox(email);
-        
-        if (Array.isArray(messages) && messages.length > 0) {
-            const latestMessage = messages[0];
-            const content = latestMessage.body || latestMessage.text || latestMessage.content || '';
-            
-            const codeMatch = content.match(/\b\d{4,8}\b/);
-            if (codeMatch) {
-                console.log(`✅ تم استخراج الكود: ${codeMatch[0]}`);
-                return codeMatch[0];
-            }
-        }
-        await new Promise(resolve => setTimeout(resolve, 5000));
-    }
-    console.log(`⌛ لم يتم استقبال أي كود خلال ${maxWaitSeconds} ثانية.`);
-    return null;
-}
-// ========== نهاية دوال البريد الجديدة ==========
+// ========== إعدادات API الجديد (Mail.tm) ==========
+const MAIL_API = 'https://api.mail.tm';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// توليد كلمة مرور آمنة
 function generateSecurePassword() {
     const length = 16;
     const lower = "abcdefghijklmnopqrstuvwxyz";
@@ -110,40 +44,78 @@ function generateSecurePassword() {
     return password.split('').sort(() => 0.5 - Math.random()).join('');
 }
 
-// ✅ توليد وتسجيل إيميل جديد باستخدام API الجديد
-async function generateAndRegisterEmail(chatId) {
-    const username = `${faker.person.firstName().toLowerCase()}${crypto.randomBytes(3).toString('hex')}`;
-    const domain = 'usmail.my.id'; // النطاق الرئيسي
-    const email = `${username}@${domain}`;
-    
-    await bot.sendMessage(chatId, `📧 جاري تسجيل البريد: \`${email}\``, { parse_mode: 'Markdown' });
-    
-    const registered = await registerEmail(email);
-    if (!registered) {
-        // محاولة نطاق احتياطي
-        const fallbackEmail = `${username}@toolsmail.me`;
-        await bot.sendMessage(chatId, `⚠️ فشل التسجيل بالنطاق الرئيسي، تجربة ${fallbackEmail}`);
-        const fallbackRegistered = await registerEmail(fallbackEmail);
-        if (!fallbackRegistered) {
-            throw new Error('فشل تسجيل البريد الإلكتروني بجميع المحاولات');
-        }
-        return { email: fallbackEmail, username };
+// ✅ إنشاء حساب بريد مؤقت على Mail.tm
+async function createMailTmAccount(chatId) {
+    try {
+        // 1. جلب النطاقات المتاحة
+        const domainsRes = await axios.get(`${MAIL_API}/domains`);
+        const domains = domainsRes.data['hydra:member'] || [];
+        if (domains.length === 0) throw new Error('لا توجد نطاقات متاحة');
+        const domain = domains[Math.floor(Math.random() * domains.length)].domain;
+
+        // 2. توليد اسم وبريد
+        const username = faker.person.firstName().toLowerCase() + crypto.randomBytes(2).toString('hex');
+        const email = `${username}@${domain}`;
+        const password = generateSecurePassword();
+
+        await bot.sendMessage(chatId, `📧 جاري إنشاء بريد: \`${email}\``, { parse_mode: 'Markdown' });
+
+        // 3. إنشاء الحساب
+        await axios.post(`${MAIL_API}/accounts`, {
+            address: email,
+            password: password
+        });
+
+        // 4. تسجيل الدخول للحصول على Token
+        const tokenRes = await axios.post(`${MAIL_API}/token`, {
+            address: email,
+            password: password
+        });
+        const token = tokenRes.data.token;
+
+        return { email, password, token };
+    } catch (error) {
+        console.error('فشل إنشاء حساب Mail.tm:', error.response?.data || error.message);
+        throw new Error('تعذر إنشاء بريد مؤقت');
     }
-    return { email, username };
 }
 
-// ✅ جلب الكود باستخدام waitForVerificationCode الجديدة (مع إشعار البوت)
-async function getCodeFromEmail(email, chatId, maxWait = 90) {
-    await bot.sendMessage(chatId, `⏳ في انتظار كود التفعيل من البريد...`);
-    const code = await waitForVerificationCode(email, maxWait);
-    if (code) {
-        await bot.sendMessage(chatId, `📩 **تم استخراج الكود:** \`${code}\``, { parse_mode: 'Markdown' });
+// ✅ جلب الرسائل من Mail.tm
+async function fetchMailTmMessages(token) {
+    try {
+        const res = await axios.get(`${MAIL_API}/messages`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        return res.data['hydra:member'] || [];
+    } catch (error) {
+        return [];
     }
-    return code;
+}
+
+// ✅ انتظار كود التفعيل من Mail.tm
+async function waitForMailTmCode(email, password, token, chatId, maxWaitSeconds = 90) {
+    const startTime = Date.now();
+    await bot.sendMessage(chatId, `⏳ في انتظار وصول كود التفعيل إلى البريد...`);
+
+    while ((Date.now() - startTime) < maxWaitSeconds * 1000) {
+        const messages = await fetchMailTmMessages(token);
+        
+        for (const msg of messages) {
+            // محاولة استخراج الكود من subject أو intro
+            const content = `${msg.subject || ''} ${msg.intro || ''}`;
+            const codeMatch = content.match(/\b\d{6}\b/); // كود 6 أرقام
+            if (codeMatch) {
+                await bot.sendMessage(chatId, `📩 **تم استخراج الكود:** \`${codeMatch[0]}\``, { parse_mode: 'Markdown' });
+                return codeMatch[0];
+            }
+        }
+        await sleep(4000); // فحص كل 4 ثوانٍ
+    }
+    return null;
 }
 
 // ✅ بث مباشر حقيقي (تعديل نفس الرسالة)
-function startLiveStream(page, chatId, intervalMs = 500) {
+function startLiveStream(page, chatId, intervalMs = 600) {
     let messageId = null;
     let stopped = false;
     let timer = null;
@@ -197,23 +169,24 @@ async function simulateHumanActivityFast(page) {
     } catch (e) {}
 }
 
+// الدالة الرئيسية لإنشاء الحساب
 async function createAccount(chatId, currentNum, total) {
     const statusMsg = await bot.sendMessage(chatId, `⚡ جاري العمل على [${currentNum}/${total}]...`);
 
-    let emailData, password;
+    let mailData;
     try {
-        await bot.editMessageText(`⚙️ جاري توليد وتسجيل الإيميل...`, { chat_id: chatId, message_id: statusMsg.message_id });
-        emailData = await generateAndRegisterEmail(chatId);
-        password = generateSecurePassword();
+        await bot.editMessageText(`⚙️ جاري إنشاء بريد مؤقت...`, { chat_id: chatId, message_id: statusMsg.message_id });
+        mailData = await createMailTmAccount(chatId);
     } catch (e) {
-        await bot.editMessageText(`❌ فشل تسجيل الإيميل: ${e.message}`, { chat_id: chatId, message_id: statusMsg.message_id });
+        await bot.editMessageText(`❌ فشل إنشاء البريد: ${e.message}`, { chat_id: chatId, message_id: statusMsg.message_id });
         return false;
     }
 
-    const { email, username } = emailData;
+    const { email, password: mailPassword, token } = mailData;
+    const chatGptPassword = generateSecurePassword(); // كلمة مرور منفصلة لحساب ChatGPT
     const fullName = `${faker.person.firstName()} ${faker.person.lastName()}`;
 
-    await bot.editMessageText(`📧 \`${email}\`\n🔑 \`${password}\`\n🚀 جاري فتح المتصفح...`, {
+    await bot.editMessageText(`📧 \`${email}\`\n🔑 \`${chatGptPassword}\`\n🚀 جاري فتح المتصفح...`, {
         chat_id: chatId, message_id: statusMsg.message_id, parse_mode: 'Markdown'
     });
 
@@ -265,7 +238,7 @@ async function createAccount(chatId, currentNum, total) {
         await bot.editMessageText(`🔐 إدخال كلمة المرور...`, { chat_id: chatId, message_id: statusMsg.message_id });
         const passInput = page.locator('input[type="password"]');
         await passInput.waitFor({ state: 'visible', timeout: 15000 });
-        await passInput.fill(password);
+        await passInput.fill(chatGptPassword);
         await page.keyboard.press('Enter');
 
         await sleep(3000);
@@ -279,15 +252,15 @@ async function createAccount(chatId, currentNum, total) {
 
         await bot.editMessageText(`⏳ في انتظار وصول كود التحقق إلى الإيميل...`, { chat_id: chatId, message_id: statusMsg.message_id });
 
-        // ✅ استخدام الدالة الجديدة لانتظار الكود
-        let code = await getCodeFromEmail(email, chatId, 90);
+        // ✅ استخدام API Mail.tm لانتظار الكود
+        let code = await waitForMailTmCode(email, mailPassword, token, chatId, 90);
 
         if (!code) {
             const resendBtn = page.locator('button:has-text("Resend email")');
             if (await resendBtn.isVisible().catch(() => false)) {
                 await resendBtn.click();
                 await bot.sendMessage(chatId, "🔄 ضغطنا إعادة إرسال الكود...");
-                code = await getCodeFromEmail(email, chatId, 60);
+                code = await waitForMailTmCode(email, mailPassword, token, chatId, 60);
             }
         }
 
@@ -332,7 +305,7 @@ async function createAccount(chatId, currentNum, total) {
             await sleep(3000);
         }
 
-        const result = `${email}|${password}`;
+        const result = `${email}|${chatGptPassword}`;
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
         await bot.sendMessage(chatId, `✅ **تم إنشاء الحساب بنجاح:**\n\`${result}\``, { parse_mode: 'Markdown' });
 
