@@ -1,11 +1,11 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 22 (الحل القطعي)
+ * ChatGPT Bot Creator - الاصدار 23 (الحل النهائي الجذري)
  * ==========================================================
- * - تم إلغاء شروط التخطي (if) التي كانت تسبب تجاهل حقل المواليد.
- * - الاعتماد على الفهرسة المطلقة للحقول: 
- * الحقل الأول (0) للاسم، الحقل الثاني (1) للمواليد.
- * - مستحيل أن يتخطى البوت المواليد أو يضغط على الزر قبل إكمالها.
+ * - تم حل مشكلة كتابة المواليد مكان الاسم بسبب الحقول المخفية.
+ * - البوت الآن يستهدف الحقول "المرئية" (visible) فقط.
+ * - تم توجيه أوامر الحذف والكتابة للحقل نفسه (locator.type) 
+ * بدلاً من لوحة المفاتيح العامة لضمان عدم الكتابة في المكان الخطأ.
  * ==========================================================
  */
 
@@ -319,46 +319,50 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "⏳ جاري الانتظار بعد الضغط على Continue", currentPhotoId);
 
             // ==========================================================
-            // 📸 التحديث القطعي (الاصدار 22): الاعتماد على ترتيب الحقول الإجباري
+            // 📸 التحديث القطعي (الاصدار 23): الاعتماد على الحقول المرئية حصراً وتوجيه الكتابة
             // ==========================================================
             await updateStatus("جاري التحقق من طلب الاسم والمواليد...");
             
-            // ننتظر ظهور أي حقل إدخال (نضمن أن الصفحة تم تحميلها)
-            await page.waitForSelector('input', { timeout: 25000 }).catch(() => null);
+            // ننتظر ظهور أي حقل إدخال مرئي لنتأكد أننا في الصفحة الصحيحة
+            await page.waitForSelector('input:visible', { timeout: 25000 }).catch(() => null);
             
-            // الاعتماد المباشر والقطعي: الحقل الأول (0) هو الاسم، الثاني (1) هو المواليد
-            const nameInput = page.locator('input').nth(0); 
-            const bdayInput = page.locator('input').nth(1); 
+            // استخدام "input:visible" يتجاهل جميع حقول الحماية المخفية في الموقع
+            const visibleInputs = page.locator('input:visible');
             
-            if (await nameInput.isVisible().catch(() => false)) {
+            // نتحقق أن هناك حقلين مرئيين على الأقل (الأول للاسم، والثاني للمواليد)
+            if (await visibleInputs.count() >= 2) {
+                const nameLoc = visibleInputs.nth(0); 
+                const bdayLoc = visibleInputs.nth(1); 
+
                 currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 صفحة طلب الاسم والمواليد مفتوحة", currentPhotoId);
                 
-                // 1. تعبئة الاسم 
-                await nameInput.click({ clickCount: 3 });
-                await page.keyboard.press('Backspace');
-                await nameInput.type(fullName, { delay: 50 });
+                // 1. تعبئة الاسم حصراً في الحقل الأول المرئي
+                await nameLoc.click({ clickCount: 3 });
+                await nameLoc.press('Backspace');
+                await nameLoc.type(fullName, { delay: 50 }); // الكتابة موجهة للحقل نفسه
                 await sleep(1500); 
                 
-                // 2. تعبئة المواليد إجبارياً وبدون أي شروط (لا يمكن أن يتخطاها)
+                // 2. تعبئة المواليد حصراً في الحقل الثاني المرئي
                 await updateStatus("جاري إدخال المواليد إجبارياً...");
-                await bdayInput.focus();
+                await bdayLoc.click();
                 await sleep(500);
                 
-                // مسح جذري شامل (الذهاب لآخر الحقل ثم الحذف 15 مرة)
-                await page.keyboard.press('End');
+                // مسح جذري وشامل موجه للحقل الثاني فقط 
+                await bdayLoc.press('End');
                 for (let i = 0; i < 15; i++) {
-                    await page.keyboard.press('Backspace');
+                    await bdayLoc.press('Backspace');
+                    await bdayLoc.press('Delete');
                 }
                 await sleep(500);
                 
-                // الكتابة التدريجية للمواليد
+                // الكتابة التدريجية للمواليد موجهة للحقل الثاني فقط
                 const bdayStr = '04/24/2000';
-                await page.keyboard.type(bdayStr, { delay: 150 });
-                await sleep(2000); // إعطاء الموقع وقتاً لاستيعاب التاريخ
+                await bdayLoc.type(bdayStr, { delay: 150 });
+                await sleep(2000); 
                 
-                currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد إجبارياً بنجاح: ${bdayStr}`, currentPhotoId);
+                currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد بنجاح: ${bdayStr}`, currentPhotoId);
 
-                // 3. الضغط على زر Finish creating account (أو أي زر تأكيد)
+                // 3. الضغط على زر التأكيد
                 await updateStatus("جاري الضغط على زر الإنهاء...");
                 const finishBtn = page.locator('button:has-text("Finish creating account"), button:has-text("Agree"), button[type="submit"]').last();
                 
@@ -366,7 +370,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🖱️ جاري الضغط على Finish creating account", currentPhotoId);
                     await finishBtn.click({ force: true });
                 } else {
-                    // حل بديل قوي إذا لم يتم العثور على الزر
                     await page.keyboard.press('Enter');
                 }
 
@@ -492,4 +495,4 @@ bot.onText(/\/clearproxy/, (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
 process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection at:', promise, 'reason:', reason); });
 
-console.log("🤖 البوت يعمل الآن (الاصدار 22)...");
+console.log("🤖 البوت يعمل الآن (الاصدار 23)...");
