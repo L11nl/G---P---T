@@ -21,7 +21,7 @@ let isProcessing = false;
 let activeProxy = null;
 
 const API_BASE_URL = 'https://usmail.my.id';
-const API_LICENSE_KEY = 'USMAIL-166T-DEMO'; // المفتاح المطلوب
+const API_LICENSE_KEY = 'USMAIL-166T-DEMO';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -109,18 +109,16 @@ async function createAccount(chatId, current, total) {
         await sleep(5000);
 
         // ==========================================
-        // الانتقال لصفحة الإيميل لتسجيل الدخول وإدخال المفتاح والإيميل
+        // الانتقال لصفحة الإيميل لتسجيل الدخول وإدخال المفتاح
         // ==========================================
         frameId = await sendMovingFrame(page, chatId, frameId, "طلب رمز التحقق.. جاري فتح صفحة الإيميل والمفتاح 🔄");
         
         emailPage = await context.newPage(); 
-        
-        // التوجه للصفحة الرئيسية أو صفحة الغرفة
         await emailPage.goto(`${API_BASE_URL}/room/${username}`, { waitUntil: "domcontentloaded" });
         frameId = await sendMovingFrame(emailPage, chatId, frameId, `جاري فحص حالة صندوق الإيميل..`);
         await sleep(2000);
 
-        // 1. فحص وجود مربع المفتاح (كما في الصورة المرفقة KETIK KODE LISENSI)
+        // 1. فحص وجود مربع المفتاح ومعالجته بذكاء أقوى
         try {
             const keyInput = emailPage.locator('input[placeholder*="LISENSI" i], input[type="password"], input[name="key"], input[placeholder*="License" i]').first();
             if (await keyInput.isVisible({ timeout: 5000 })) {
@@ -128,17 +126,24 @@ async function createAccount(chatId, current, total) {
                 frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم وضع المفتاح ${API_LICENSE_KEY}..`);
                 await sleep(1000);
                 
-                // الضغط على الزر الأخضر (Buka Dashboard)
-                const enterBtn = emailPage.locator('button:has-text("Buka"), button:has-text("Dashboard"), button.bg-success, button.btn-success, button[type="submit"]').first();
-                await enterBtn.click();
+                // التحديث الجديد: الضغط على زر Enter من الكيبورد مباشرة وهو الأضمن
+                await emailPage.keyboard.press('Enter');
+                await sleep(1000);
+                
+                // التحديث الجديد: استخدام محدد شامل للزر والضغط عليه بالقوة (force)
+                const enterBtn = emailPage.locator(':text("Buka Dashboard"), :text("Buka"), .bg-success, .btn-success, button[type="submit"]').first();
+                if (await enterBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
+                    await enterBtn.click({ force: true });
+                }
+                
                 await sleep(4000);
-                frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم الضغط على الزر الأخضر للدخول 🖱️`);
+                frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم محاولة الدخول للمسار 🖱️`);
             }
         } catch(e) {
             console.log("لم يظهر قفل المفتاح، جاري المتابعة...");
         }
 
-        // 2. وضع الإيميل المؤقت في حال طلبه الموقع (حسب طلبك)
+        // 2. وضع الإيميل المؤقت في حال طلبه الموقع بعد فتح القفل
         try {
             const roomInput = emailPage.locator('input[placeholder*="username" i], input[placeholder*="email" i], input[name="room"]').first();
             if (await roomInput.isVisible({ timeout: 4000 })) {
@@ -151,7 +156,7 @@ async function createAccount(chatId, current, total) {
 
         // 3. النزول للأسفل لانتظار الكود
         await emailPage.mouse.wheel(0, 400); 
-        frameId = await sendMovingFrame(emailPage, chatId, frameId, `صندوق الوارد للإيميل (الدخول تم): ${email} - ننتظر الرسالة ⬇️`);
+        frameId = await sendMovingFrame(emailPage, chatId, frameId, `صندوق الوارد (الدخول تم): ${email} - ننتظر الرسالة ⬇️`);
 
         let code = null;
         const headers = {
@@ -164,7 +169,6 @@ async function createAccount(chatId, current, total) {
 
         for (let i = 0; i < 20; i++) {
             try {
-                // سحب الكود عبر الـ API بالخلفية لضمان السرعة والدقة
                 const res = await axios.get(messagesUrl, { headers, timeout: 3000 });
                 const matches = JSON.stringify(res.data).match(/\b\d{6}\b/g);
                 if (matches) {
@@ -174,9 +178,7 @@ async function createAccount(chatId, current, total) {
                 }
             } catch (e) {}
             
-            // تصوير الشاشة كل فترة لبيان الانتظار
             if (i % 2 === 0 && !code) {
-                // يمكن عمل ريفريش بسيط للصفحة لتبدو حية إذا أردت، أو تركها هكذا
                 frameId = await sendMovingFrame(emailPage, chatId, frameId, `⏳ ننتظر وصول رسالة OpenAI... (محاولة ${i+1})`);
             }
             await sleep(2500);
@@ -226,7 +228,6 @@ async function createAccount(chatId, current, total) {
 
     } catch (error) {
         await bot.sendMessage(chatId, `❌ توقف العمل: ${error.message}`);
-        // صورة الخطأ النهائية ثابتة دائماً
         if (page) {
             const errBuffer = await page.screenshot({ fullPage: true, quality: 75, type: 'jpeg' });
             await bot.sendPhoto(chatId, errBuffer, { caption: '📸 الشاشة وقت حدوث المشكلة' }, { filename: 'error.jpg', contentType: 'image/jpeg' });
@@ -237,9 +238,8 @@ async function createAccount(chatId, current, total) {
     }
 }
 
-// رسالة ستارت تحدثت إلى نسخة 14
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "👋 أهلاً نبيل! البوت المحدث (نسخة 14) جاهز لإنشاء حسابات ChatGPT على دومينات usmail بدقة واحترافية عالية 🚀\nاستخدم أمر `/create 1` للبدء.");
+    bot.sendMessage(msg.chat.id, "👋 أهلاً نبيل! البوت المحدث (نسخة 14.1) جاهز لإنشاء حسابات ChatGPT على دومينات usmail بدقة واحترافية عالية 🚀\nاستخدم أمر `/create 1` للبدء.");
 });
 
 bot.onText(/\/create (.+)/, async (msg, match) => {
