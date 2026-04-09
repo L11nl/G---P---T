@@ -21,7 +21,7 @@ let isProcessing = false;
 let activeProxy = null;
 
 const API_BASE_URL = 'https://usmail.my.id';
-const API_LICENSE_KEY = 'USMAIL-166T-DEMO'; // المفتاح المطلوب
+const API_LICENSE_KEY = 'USMAIL-166T-DEMO';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -32,7 +32,6 @@ function generateSecurePassword() {
     return password;
 }
 
-// 1. توليد الإيميل من API usmail
 async function generateRandomEmail() {
     const username = `${faker.person.firstName().toLowerCase()}${crypto.randomBytes(3).toString('hex')}`;
     const headers = {
@@ -49,9 +48,6 @@ async function generateRandomEmail() {
     }
 }
 
-// ==========================================
-// نظام تحريك الفريمات (إرسال صورة وحذف القديمة)
-// ==========================================
 async function sendMovingFrame(page, chatId, oldMessageId, caption) {
     if (!page || page.isClosed()) return oldMessageId;
     try {
@@ -108,9 +104,6 @@ async function createAccount(chatId, current, total) {
         await page.keyboard.press('Enter');
         await sleep(5000);
 
-        // ==========================================
-        // الانتقال لصفحة الإيميل لتسجيل الدخول وإدخال المفتاح
-        // ==========================================
         frameId = await sendMovingFrame(page, chatId, frameId, "طلب رمز التحقق.. جاري فتح صفحة الإيميل والمفتاح 🔄");
         
         emailPage = await context.newPage(); 
@@ -118,24 +111,25 @@ async function createAccount(chatId, current, total) {
         frameId = await sendMovingFrame(emailPage, chatId, frameId, `جاري فحص حالة صندوق الإيميل..`);
         await sleep(2000);
 
-        // 1. المعالجة القهرية الجديدة (طباعة حرف بحرف)
+        // ===================== التعديل الأساسي هنا =====================
+        // بدلاً من الضغط على Enter، سنبحث عن الزر ونضغط عليه بالماوس
         try {
             const keyInput = emailPage.locator('input').first();
             if (await keyInput.isVisible({ timeout: 5000 })) {
                 await keyInput.click();
                 await sleep(500);
+                
+                // طباعة المفتاح حرفاً بحرف
                 await keyInput.pressSequentially(API_LICENSE_KEY, { delay: 150 });
                 frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم طباعة المفتاح حرفاً بحرف ⌨️`);
                 await sleep(1500);
-                await keyInput.press('Enter');
-                await sleep(2000);
                 
-                // --- ✅ الضغط على زر Buka Dashboard بكل الطرق الممكنة ---
-                frameId = await sendMovingFrame(emailPage, chatId, frameId, `جاري الضغط على زر "Buka Dashboard"...`);
-                await sleep(3000);
+                // 🔥🔥🔥 الضغط بالماوس على الزر المناسب 🔥🔥🔥
+                frameId = await sendMovingFrame(emailPage, chatId, frameId, `جاري النقر بالماوس على زر "Buka Dashboard"...`);
                 
-                let buttonClicked = false;
-                const possibleSelectors = [
+                // 1. محاولة العثور على الزر والنقر عليه بالماوس
+                let clicked = false;
+                const selectors = [
                     'button:has-text("Buka")',
                     'button:has-text("Dashboard")',
                     'button:has-text("Go")',
@@ -145,90 +139,65 @@ async function createAccount(chatId, current, total) {
                     'a:has-text("Dashboard")',
                     'button[type="submit"]',
                     '.btn-success',
-                    '.btn-primary',
-                    'button.btn'
+                    '.btn-primary'
                 ];
                 
-                for (const selector of possibleSelectors) {
-                    try {
-                        const btn = emailPage.locator(selector).first();
-                        if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
-                            await btn.click({ force: true, noWaitAfter: true });
-                            console.log(`✅ تم الضغط على الزر باستخدام المحدد: ${selector}`);
-                            frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم الضغط على الزر الأخضر 🖱️ (${selector})`);
-                            buttonClicked = true;
+                for (const sel of selectors) {
+                    const btn = emailPage.locator(sel).first();
+                    if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+                        // الحصول على موقع الزر
+                        const box = await btn.boundingBox();
+                        if (box) {
+                            // النقر بالماوس في وسط الزر
+                            await emailPage.mouse.click(box.x + box.width/2, box.y + box.height/2);
+                            console.log(`✅ تم النقر بالماوس على الزر: ${sel}`);
+                            frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم النقر بالماوس على الزر (${sel}) 🖱️`);
+                            clicked = true;
                             await sleep(2000);
                             break;
                         }
-                    } catch (e) {}
+                    }
                 }
                 
-                if (!buttonClicked) {
-                    try {
-                        const buttons = await emailPage.$$('button');
-                        for (const btn of buttons) {
-                            const text = await btn.textContent().catch(() => '');
-                            if (text && (text.includes('Buka') || text.includes('Dashboard') || text.includes('Access') || text.includes('Go'))) {
-                                await btn.click({ force: true, noWaitAfter: true });
-                                console.log(`✅ تم الضغط على الزر عبر البحث النصي: "${text}"`);
-                                frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم الضغط على الزر الأخضر (نص: ${text})`);
-                                buttonClicked = true;
+                // 2. إذا لم ينجح، البحث عن أي زر يحتوي على النص والنقر بالماوس
+                if (!clicked) {
+                    const buttons = await emailPage.$$('button, a');
+                    for (const btn of buttons) {
+                        const text = await btn.textContent().catch(() => '');
+                        if (text && (text.includes('Buka') || text.includes('Dashboard') || text.includes('Access') || text.includes('Go'))) {
+                            const box = await btn.boundingBox();
+                            if (box) {
+                                await emailPage.mouse.click(box.x + box.width/2, box.y + box.height/2);
+                                console.log(`✅ تم النقر بالماوس على الزر بالنص: "${text}"`);
+                                frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم النقر بالماوس (نص: ${text}) 🖱️`);
+                                clicked = true;
                                 await sleep(2000);
                                 break;
                             }
                         }
-                    } catch (e) {}
+                    }
                 }
                 
-                if (!buttonClicked) {
-                    try {
-                        const jsClick = async (textToFind) => {
-                            await emailPage.evaluate((text) => {
-                                const elements = document.querySelectorAll('button, a, div[role="button"]');
-                                for (const el of elements) {
-                                    if (el.textContent && el.textContent.includes(text)) {
-                                        el.click();
-                                        return true;
-                                    }
-                                }
-                                return false;
-                            }, textToFind);
-                        };
-                        
-                        if (await jsClick('Buka')) {
-                            buttonClicked = true;
-                            frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم الضغط على الزر باستخدام JavaScript (Buka)`);
-                        } else if (await jsClick('Dashboard')) {
-                            buttonClicked = true;
-                            frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم الضغط على الزر باستخدام JavaScript (Dashboard)`);
-                        }
-                        await sleep(2000);
-                    } catch (e) {}
+                // 3. محاولة النقر بالماوس عبر إحداثيات تقريبية إذا لم نجد الزر
+                if (!clicked) {
+                    // نبحث عن أي زر مرئي قرب حقل الإدخال
+                    const inputBox = await keyInput.boundingBox();
+                    if (inputBox) {
+                        // ننقر أسفل حقل الإدخال مباشرة (غالباً مكان الزر)
+                        await emailPage.mouse.click(inputBox.x + 100, inputBox.y + 50);
+                        frameId = await sendMovingFrame(emailPage, chatId, frameId, `⚠️ تم النقر بالماوس في موقع تقديري أسفل الحقل`);
+                        clicked = true;
+                    }
                 }
                 
-                if (!buttonClicked) {
-                    try {
-                        const btn = emailPage.getByRole('button', { name: /Buka|Dashboard|Access|Go/i }).first();
-                        if (await btn.isVisible({ timeout: 3000 }).catch(() => false)) {
-                            await btn.click({ force: true, noWaitAfter: true });
-                            buttonClicked = true;
-                            frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم الضغط على الزر الأخضر (getByRole)`);
-                            await sleep(2000);
-                        }
-                    } catch (e) {}
-                }
-                
-                if (!buttonClicked) {
-                    frameId = await sendMovingFrame(emailPage, chatId, frameId, `⚠️ لم يتم العثور على زر "Buka Dashboard"، استمرار العملية...`);
-                }
-                
-                await sleep(4000);
+                await sleep(3000);
             }
         } catch(e) {
             console.log("تخطي خطوة المفتاح...");
         }
+        // =============================================================
 
-        // 2. وضع الإيميل المؤقت في حال طلبه الموقع بعد فتح القفل
+        // 2. وضع الإيميل المؤقت في حال طلبه الموقع
         try {
             const roomInput = emailPage.locator('input[placeholder*="username" i], input[placeholder*="email" i], input[name="room"]').first();
             if (await roomInput.isVisible({ timeout: 4000 })) {
@@ -239,7 +208,6 @@ async function createAccount(chatId, current, total) {
             }
         } catch(e) {}
 
-        // 3. النزول للأسفل لانتظار الكود
         await emailPage.mouse.wheel(0, 400); 
         frameId = await sendMovingFrame(emailPage, chatId, frameId, `صندوق الوارد (الدخول تم): ${email} - ننتظر الرسالة ⬇️`);
 
@@ -323,9 +291,7 @@ async function createAccount(chatId, current, total) {
     }
 }
 
-// ==========================================
-// أوامر البوت مع أزرار إنلاين
-// ==========================================
+// الأزرار
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     const opts = {
@@ -339,12 +305,10 @@ bot.onText(/\/start/, (msg) => {
     bot.sendMessage(chatId, "👋 أهلاً بك! البوت جاهز لإنشاء حسابات ChatGPT.\n\nاختر أحد الخيارات:", opts);
 });
 
-// معالجة ضغطات الأزرار
 bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
     const data = query.data;
     
-    // الرد على الاستعلام لإزالة علامة التحميل
     bot.answerCallbackQuery(query.id);
     
     if (data === 'create_1') {
@@ -362,14 +326,12 @@ bot.on('callback_query', async (query) => {
         }
         bot.sendMessage(chatId, "🔢 كم حساباً تريد إنشاء؟ أرسل الرقم فقط (مثلاً: 5)");
         
-        // إنشاء مستمع لمرة واحدة لالتقاط العدد
         const listenerId = bot.onReplyToMessage(chatId, query.message.message_id, async (replyMsg) => {
             const num = parseInt(replyMsg.text);
             if (isNaN(num) || num < 1) {
                 return bot.sendMessage(chatId, "❌ الرجاء إرسال رقم صحيح أكبر من صفر.");
             }
             
-            // إزالة المستمع المؤقت
             bot.removeReplyListener(listenerId);
             
             isProcessing = true;
@@ -383,7 +345,6 @@ bot.on('callback_query', async (query) => {
     }
 });
 
-// أوامر البروكسي (اختيارية)
 bot.onText(/\/setproxy (.+)/, (msg, match) => {
     let server = match[1].trim();
     if (!server.startsWith('http://')) server = 'http://' + server;
@@ -396,12 +357,10 @@ bot.onText(/\/clearproxy/, (msg) => {
     bot.sendMessage(msg.chat.id, "🗑️ تم إيقاف البروكسي.");
 });
 
-// أمر إيقاف العملية (اختياري)
 bot.onText(/\/stop/, (msg) => {
     if (!isProcessing) {
         return bot.sendMessage(msg.chat.id, "ℹ️ لا توجد عملية جارية حالياً.");
     }
-    // يمكن إضافة آلية إيقاف إذا أردت
     bot.sendMessage(msg.chat.id, "⚠️ لا يمكن إيقاف العملية مباشرة حالياً، لكنها ستتوقف بعد انتهاء الحساب الحالي.");
 });
 
