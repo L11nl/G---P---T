@@ -11,7 +11,7 @@ chromium.use(stealth);
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
-    console.error("❌ BOT_TOKEN مفقود في متغيرات Railway.");
+    console.error("❌ BOT_TOKEN مفقود في متغيرات البيئة.");
     process.exit(1);
 }
 
@@ -120,27 +120,106 @@ async function createAccount(chatId, current, total) {
 
         // 1. المعالجة القهرية الجديدة (طباعة حرف بحرف)
         try {
-            // سحب أي مربع نص موجود بالصفحة
             const keyInput = emailPage.locator('input').first();
             if (await keyInput.isVisible({ timeout: 5000 })) {
-                
                 await keyInput.click();
                 await sleep(500);
-                
-                // 🔥 السر هنا: طباعة الكود حرفاً بحرف لخدع حماية الموقع وتفعيل الزر 🔥
                 await keyInput.pressSequentially(API_LICENSE_KEY, { delay: 150 });
                 frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم طباعة المفتاح حرفاً بحرف ⌨️`);
                 await sleep(1500);
-                
-                // الضغط على إنتر من المربع نفسه
                 await keyInput.press('Enter');
                 await sleep(2000);
                 
-                // البحث عن الزر الأخضر بالاسم والضغط عليه إذا لزم الأمر
-                const btn = emailPage.getByRole('button', { name: /Buka|Dashboard/i }).first();
-                if (await btn.isVisible().catch(()=>false)) {
-                    await btn.click({ force: true });
-                    frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم الضغط على الزر الأخضر 🖱️`);
+                // --- ✅ الضغط على زر Buka Dashboard بكل الطرق الممكنة ---
+                frameId = await sendMovingFrame(emailPage, chatId, frameId, `جاري الضغط على زر "Buka Dashboard"...`);
+                await sleep(3000);
+                
+                let buttonClicked = false;
+                const possibleSelectors = [
+                    'button:has-text("Buka")',
+                    'button:has-text("Dashboard")',
+                    'button:has-text("Go")',
+                    'button:has-text("Access")',
+                    'button:has-text("Open")',
+                    'a:has-text("Buka")',
+                    'a:has-text("Dashboard")',
+                    'button[type="submit"]',
+                    '.btn-success',
+                    '.btn-primary',
+                    'button.btn'
+                ];
+                
+                for (const selector of possibleSelectors) {
+                    try {
+                        const btn = emailPage.locator(selector).first();
+                        if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+                            await btn.click({ force: true, noWaitAfter: true });
+                            console.log(`✅ تم الضغط على الزر باستخدام المحدد: ${selector}`);
+                            frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم الضغط على الزر الأخضر 🖱️ (${selector})`);
+                            buttonClicked = true;
+                            await sleep(2000);
+                            break;
+                        }
+                    } catch (e) {}
+                }
+                
+                if (!buttonClicked) {
+                    try {
+                        const buttons = await emailPage.$$('button');
+                        for (const btn of buttons) {
+                            const text = await btn.textContent().catch(() => '');
+                            if (text && (text.includes('Buka') || text.includes('Dashboard') || text.includes('Access') || text.includes('Go'))) {
+                                await btn.click({ force: true, noWaitAfter: true });
+                                console.log(`✅ تم الضغط على الزر عبر البحث النصي: "${text}"`);
+                                frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم الضغط على الزر الأخضر (نص: ${text})`);
+                                buttonClicked = true;
+                                await sleep(2000);
+                                break;
+                            }
+                        }
+                    } catch (e) {}
+                }
+                
+                if (!buttonClicked) {
+                    try {
+                        const jsClick = async (textToFind) => {
+                            await emailPage.evaluate((text) => {
+                                const elements = document.querySelectorAll('button, a, div[role="button"]');
+                                for (const el of elements) {
+                                    if (el.textContent && el.textContent.includes(text)) {
+                                        el.click();
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            }, textToFind);
+                        };
+                        
+                        if (await jsClick('Buka')) {
+                            buttonClicked = true;
+                            frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم الضغط على الزر باستخدام JavaScript (Buka)`);
+                        } else if (await jsClick('Dashboard')) {
+                            buttonClicked = true;
+                            frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم الضغط على الزر باستخدام JavaScript (Dashboard)`);
+                        }
+                        await sleep(2000);
+                    } catch (e) {}
+                }
+                
+                if (!buttonClicked) {
+                    try {
+                        const btn = emailPage.getByRole('button', { name: /Buka|Dashboard|Access|Go/i }).first();
+                        if (await btn.isVisible({ timeout: 3000 }).catch(() => false)) {
+                            await btn.click({ force: true, noWaitAfter: true });
+                            buttonClicked = true;
+                            frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم الضغط على الزر الأخضر (getByRole)`);
+                            await sleep(2000);
+                        }
+                    } catch (e) {}
+                }
+                
+                if (!buttonClicked) {
+                    frameId = await sendMovingFrame(emailPage, chatId, frameId, `⚠️ لم يتم العثور على زر "Buka Dashboard"، استمرار العملية...`);
                 }
                 
                 await sleep(4000);
@@ -244,22 +323,67 @@ async function createAccount(chatId, current, total) {
     }
 }
 
+// ==========================================
+// أوامر البوت مع أزرار إنلاين
+// ==========================================
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "👋 أهلاً نبيل! البوت المحدث (نسخة 16 - كاسرة الحماية) جاهز 🚀\nاستخدم أمر `/create 1` للبدء.");
+    const chatId = msg.chat.id;
+    const opts = {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: "🆕 إنشاء حساب واحد", callback_data: "create_1" }],
+                [{ text: "📦 إنشاء عدة حسابات", callback_data: "create_multi" }]
+            ]
+        }
+    };
+    bot.sendMessage(chatId, "👋 أهلاً بك! البوت جاهز لإنشاء حسابات ChatGPT.\n\nاختر أحد الخيارات:", opts);
 });
 
-bot.onText(/\/create (.+)/, async (msg, match) => {
-    if (isProcessing) return bot.sendMessage(msg.chat.id, "⚠️ البوت يعمل على حساب حالياً.");
-    isProcessing = true;
-    const num = parseInt(match[1]) || 1;
-    for (let i = 1; i <= num; i++) {
-        await createAccount(msg.chat.id, i, num);
-        await sleep(2000);
+// معالجة ضغطات الأزرار
+bot.on('callback_query', async (query) => {
+    const chatId = query.message.chat.id;
+    const data = query.data;
+    
+    // الرد على الاستعلام لإزالة علامة التحميل
+    bot.answerCallbackQuery(query.id);
+    
+    if (data === 'create_1') {
+        if (isProcessing) {
+            return bot.sendMessage(chatId, "⚠️ البوت يعمل على حساب حالياً. انتظر حتى ينتهي.");
+        }
+        isProcessing = true;
+        await createAccount(chatId, 1, 1);
+        isProcessing = false;
+        bot.sendMessage(chatId, "🏁 تم إنشاء الحساب بنجاح.");
+        
+    } else if (data === 'create_multi') {
+        if (isProcessing) {
+            return bot.sendMessage(chatId, "⚠️ البوت يعمل على حساب حالياً. انتظر حتى ينتهي.");
+        }
+        bot.sendMessage(chatId, "🔢 كم حساباً تريد إنشاء؟ أرسل الرقم فقط (مثلاً: 5)");
+        
+        // إنشاء مستمع لمرة واحدة لالتقاط العدد
+        const listenerId = bot.onReplyToMessage(chatId, query.message.message_id, async (replyMsg) => {
+            const num = parseInt(replyMsg.text);
+            if (isNaN(num) || num < 1) {
+                return bot.sendMessage(chatId, "❌ الرجاء إرسال رقم صحيح أكبر من صفر.");
+            }
+            
+            // إزالة المستمع المؤقت
+            bot.removeReplyListener(listenerId);
+            
+            isProcessing = true;
+            for (let i = 1; i <= num; i++) {
+                await createAccount(chatId, i, num);
+                await sleep(2000);
+            }
+            isProcessing = false;
+            bot.sendMessage(chatId, "🏁 انتهت جميع المهمات.");
+        });
     }
-    isProcessing = false;
-    bot.sendMessage(msg.chat.id, "🏁 انتهت جميع المهمات.");
 });
 
+// أوامر البروكسي (اختيارية)
 bot.onText(/\/setproxy (.+)/, (msg, match) => {
     let server = match[1].trim();
     if (!server.startsWith('http://')) server = 'http://' + server;
@@ -271,3 +395,14 @@ bot.onText(/\/clearproxy/, (msg) => {
     activeProxy = null;
     bot.sendMessage(msg.chat.id, "🗑️ تم إيقاف البروكسي.");
 });
+
+// أمر إيقاف العملية (اختياري)
+bot.onText(/\/stop/, (msg) => {
+    if (!isProcessing) {
+        return bot.sendMessage(msg.chat.id, "ℹ️ لا توجد عملية جارية حالياً.");
+    }
+    // يمكن إضافة آلية إيقاف إذا أردت
+    bot.sendMessage(msg.chat.id, "⚠️ لا يمكن إيقاف العملية مباشرة حالياً، لكنها ستتوقف بعد انتهاء الحساب الحالي.");
+});
+
+console.log("🤖 البوت يعمل الآن...");
