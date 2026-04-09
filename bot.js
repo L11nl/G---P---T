@@ -118,38 +118,35 @@ async function createAccount(chatId, current, total) {
         frameId = await sendMovingFrame(emailPage, chatId, frameId, `جاري فحص حالة صندوق الإيميل..`);
         await sleep(2000);
 
-        // 1. المعالجة القهرية لمربع المفتاح والزر الأخضر
+        // 1. المعالجة القهرية الجديدة (طباعة حرف بحرف)
         try {
-            const keyInput = emailPage.locator('input[placeholder*="LISENSI" i], input[type="password"], input[name="key"], input[placeholder*="License" i]').first();
+            // سحب أي مربع نص موجود بالصفحة
+            const keyInput = emailPage.locator('input').first();
             if (await keyInput.isVisible({ timeout: 5000 })) {
-                // التركيز على المربع لضمان تفعيله
-                await keyInput.focus();
+                
+                await keyInput.click();
                 await sleep(500);
                 
-                await keyInput.fill(API_LICENSE_KEY);
-                frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم وضع المفتاح ${API_LICENSE_KEY}..`);
-                await sleep(1000);
-                
-                // التحديث الأقوى 1: الضغط على إنتر من نفس المربع
-                await keyInput.press('Enter');
+                // 🔥 السر هنا: طباعة الكود حرفاً بحرف لخدع حماية الموقع وتفعيل الزر 🔥
+                await keyInput.pressSequentially(API_LICENSE_KEY, { delay: 150 });
+                frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم طباعة المفتاح حرفاً بحرف ⌨️`);
                 await sleep(1500);
                 
-                // التحديث الأقوى 2: حقن جافاسكريبت للبحث عن الزر والضغط عليه من داخل كود الموقع
-                await emailPage.evaluate(() => {
-                    const buttons = document.querySelectorAll('button');
-                    for (let btn of buttons) {
-                        if (btn.textContent.includes('Buka') || btn.textContent.includes('Dashboard') || btn.className.includes('success')) {
-                            btn.click();
-                            break;
-                        }
-                    }
-                }).catch(() => {});
+                // الضغط على إنتر من المربع نفسه
+                await keyInput.press('Enter');
+                await sleep(2000);
+                
+                // البحث عن الزر الأخضر بالاسم والضغط عليه إذا لزم الأمر
+                const btn = emailPage.getByRole('button', { name: /Buka|Dashboard/i }).first();
+                if (await btn.isVisible().catch(()=>false)) {
+                    await btn.click({ force: true });
+                    frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم الضغط على الزر الأخضر 🖱️`);
+                }
                 
                 await sleep(4000);
-                frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم تنفيذ أوامر الدخول القهرية 🖱️`);
             }
         } catch(e) {
-            console.log("لم يظهر قفل المفتاح، جاري المتابعة...");
+            console.log("تخطي خطوة المفتاح...");
         }
 
         // 2. وضع الإيميل المؤقت في حال طلبه الموقع بعد فتح القفل
@@ -237,7 +234,6 @@ async function createAccount(chatId, current, total) {
 
     } catch (error) {
         await bot.sendMessage(chatId, `❌ توقف العمل: ${error.message}`);
-        // صورة الخطأ النهائية ثابتة دائماً
         if (page) {
             const errBuffer = await page.screenshot({ fullPage: true, quality: 75, type: 'jpeg' });
             await bot.sendPhoto(chatId, errBuffer, { caption: '📸 الشاشة وقت حدوث المشكلة' }, { filename: 'error.jpg', contentType: 'image/jpeg' });
@@ -249,7 +245,7 @@ async function createAccount(chatId, current, total) {
 }
 
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "👋 أهلاً نبيل! البوت المحدث (نسخة 15 - كاسرة الأزرار) جاهز لإنشاء حسابات ChatGPT 🚀\nاستخدم أمر `/create 1` للبدء.");
+    bot.sendMessage(msg.chat.id, "👋 أهلاً نبيل! البوت المحدث (نسخة 16 - كاسرة الحماية) جاهز 🚀\nاستخدم أمر `/create 1` للبدء.");
 });
 
 bot.onText(/\/create (.+)/, async (msg, match) => {
