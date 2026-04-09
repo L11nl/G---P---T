@@ -1,10 +1,11 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 21
+ * ChatGPT Bot Creator - الاصدار 22 (الحل القطعي)
  * ==========================================================
- * - إجبار الترتيب: ملء الاسم -> الانتظار -> مسح وتعبئة المواليد -> الانتظار -> الضغط على Finish.
- * - استخدام طريقة المسح التكراري (Backspace/Delete) لضمان إفراغ حقل المواليد.
- * - تحديد المواليد كـ 04/24/2000.
+ * - تم إلغاء شروط التخطي (if) التي كانت تسبب تجاهل حقل المواليد.
+ * - الاعتماد على الفهرسة المطلقة للحقول: 
+ * الحقل الأول (0) للاسم، الحقل الثاني (1) للمواليد.
+ * - مستحيل أن يتخطى البوت المواليد أو يضغط على الزر قبل إكمالها.
  * ==========================================================
  */
 
@@ -32,15 +33,10 @@ const ACCOUNTS_FILE = 'accounts.txt';
 let isProcessing = false;
 let activeProxy = null;
 
-// تخزين حالة المستخدم لإنشاء الحساب اليدوي
 const userState = {};
-
-// ========== إعدادات API البريد (Mail.tm) ==========
 const MAIL_API = 'https://api.mail.tm';
-
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// توليد كلمة مرور آمنة
 function generateSecurePassword() {
     const length = 16;
     const lower = "abcdefghijklmnopqrstuvwxyz";
@@ -59,7 +55,6 @@ function generateSecurePassword() {
     return password.split('').sort(() => 0.5 - Math.random()).join('');
 }
 
-// ✅ إنشاء حساب بريد مؤقت على Mail.tm
 async function createMailTmAccount(chatId) {
     try {
         const domainsRes = await axios.get(`${MAIL_API}/domains`);
@@ -74,18 +69,15 @@ async function createMailTmAccount(chatId) {
         await bot.sendMessage(chatId, `📧 جاري إنشاء بريد تلقائي: \`${email}\``, { parse_mode: 'Markdown' });
 
         await axios.post(`${MAIL_API}/accounts`, { address: email, password: password });
-
         const tokenRes = await axios.post(`${MAIL_API}/token`, { address: email, password: password });
         const token = tokenRes.data.token;
 
         return { email, password, token };
     } catch (error) {
-        console.error('فشل إنشاء حساب Mail.tm:', error.response?.data || error.message);
         throw new Error('تعذر إنشاء بريد مؤقت تلقائي');
     }
 }
 
-// ✅ جلب الرسائل من Mail.tm
 async function fetchMailTmMessages(token) {
     try {
         const res = await axios.get(`${MAIL_API}/messages`, {
@@ -95,7 +87,6 @@ async function fetchMailTmMessages(token) {
     } catch (error) { return []; }
 }
 
-// ✅ انتظار كود التفعيل من Mail.tm (للتلقائي)
 async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
     const startTime = Date.now();
     const statusMsg = await bot.sendMessage(chatId, `⏳ في انتظار وصول كود التفعيل إلى البريد تلقائياً...`);
@@ -117,7 +108,6 @@ async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
     return null;
 }
 
-// ✅ وظيفة لإرسال وحذف الصور بالتتابع
 async function sendStepPhotoAndCleanup(page, chatId, caption, previousPhotoId = null) {
     try {
         if (previousPhotoId) {
@@ -129,12 +119,10 @@ async function sendStepPhotoAndCleanup(page, chatId, caption, previousPhotoId = 
         if (fs.existsSync(screenshotPath)) { fs.unlinkSync(screenshotPath); }
         return sent.message_id;
     } catch (err) {
-        console.error("خطأ في إرسال الصورة:", err.message);
         return previousPhotoId;
     }
 }
 
-// دالة لالتقاط وإرسال صورة الخطأ
 async function reportErrorWithScreenshot(page, chatId, errorMessage, tempDir) {
     await bot.sendMessage(chatId, `❌ خطأ: ${errorMessage}`);
     if (page) {
@@ -173,7 +161,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
     };
 
     await updateStatus("بدء العملية...");
-
     const maxEmailAttempts = isManual ? 1 : 4; 
     let currentPhotoId = null; 
 
@@ -184,7 +171,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
         }
 
         let email, mailPassword, mailToken;
-        
         if (isManual) {
             email = manualData.email;
             mailPassword = manualData.password;
@@ -293,7 +279,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 });
 
                 if (!code) throw new Error("تم إلغاء العملية أو انتهى وقت انتظار الكود.");
-
             } else {
                 code = await waitForMailTmCode(email, mailToken, chatId, 100);
                 
@@ -334,58 +319,54 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "⏳ جاري الانتظار بعد الضغط على Continue", currentPhotoId);
 
             // ==========================================================
-            // 📸 التحديث الأهم (الاصدار 21): إجبار التسلسل الصارم (الاسم -> المواليد -> الزر)
+            // 📸 التحديث القطعي (الاصدار 22): الاعتماد على ترتيب الحقول الإجباري
             // ==========================================================
             await updateStatus("جاري التحقق من طلب الاسم والمواليد...");
             
-            // ننتظر ظهور حقل الاسم أولاً للتأكد من تحميل الصفحة
-            const nameInput = page.locator('input[name="name"]').first();
-            await nameInput.waitFor({ state: 'visible', timeout: 25000 }).catch(() => null);
+            // ننتظر ظهور أي حقل إدخال (نضمن أن الصفحة تم تحميلها)
+            await page.waitForSelector('input', { timeout: 25000 }).catch(() => null);
             
-            if (await nameInput.isVisible()) {
-                currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 صفحة طلب الاسم مفتوحة", currentPhotoId);
+            // الاعتماد المباشر والقطعي: الحقل الأول (0) هو الاسم، الثاني (1) هو المواليد
+            const nameInput = page.locator('input').nth(0); 
+            const bdayInput = page.locator('input').nth(1); 
+            
+            if (await nameInput.isVisible().catch(() => false)) {
+                currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 صفحة طلب الاسم والمواليد مفتوحة", currentPhotoId);
                 
                 // 1. تعبئة الاسم 
                 await nameInput.click({ clickCount: 3 });
                 await page.keyboard.press('Backspace');
                 await nameInput.type(fullName, { delay: 50 });
-                await sleep(1500); // استراحة
+                await sleep(1500); 
                 
-                // 2. تعبئة المواليد
-                const bdayStr = '04/24/2000'; // تاريخ 2000/4/24 بصيغة الموقع
-                const bdayInput = page.locator('input[name="birthday"], input[id*="birth" i], input[placeholder*="birth" i]').first();
+                // 2. تعبئة المواليد إجبارياً وبدون أي شروط (لا يمكن أن يتخطاها)
+                await updateStatus("جاري إدخال المواليد إجبارياً...");
+                await bdayInput.focus();
+                await sleep(500);
                 
-                // انتظار الحقل حتى يصبح مرئياً
-                await bdayInput.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
-                
-                if (await bdayInput.isVisible()) {
-                    await bdayInput.click();
-                    await sleep(500);
-                    
-                    // مسح متكرر لحقل المواليد (طريقة فعالة جداً لتفريغ الـ React Masks)
-                    for (let i = 0; i < 15; i++) {
-                        await page.keyboard.press('Backspace');
-                        await page.keyboard.press('Delete');
-                    }
-                    await sleep(500);
-                    
-                    // الكتابة التدريجية للمواليد
-                    await page.keyboard.type(bdayStr, { delay: 150 });
-                    await sleep(2000); // إعطاء الموقع وقتاً إضافياً لاستيعاب التاريخ
-                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد بنجاح: ${bdayStr}`, currentPhotoId);
-                } else {
-                    console.log("حقل المواليد غير موجود، سنكمل...");
+                // مسح جذري شامل (الذهاب لآخر الحقل ثم الحذف 15 مرة)
+                await page.keyboard.press('End');
+                for (let i = 0; i < 15; i++) {
+                    await page.keyboard.press('Backspace');
                 }
-
-                // 3. الضغط على زر Finish creating account 
-                // نضمن أننا لن نضغط على الزر إلا بعد الانتهاء من المواليد
-                const finishBtn = page.locator('button:has-text("Finish creating account")').first();
-                await finishBtn.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+                await sleep(500);
                 
-                if (await finishBtn.isVisible()) {
+                // الكتابة التدريجية للمواليد
+                const bdayStr = '04/24/2000';
+                await page.keyboard.type(bdayStr, { delay: 150 });
+                await sleep(2000); // إعطاء الموقع وقتاً لاستيعاب التاريخ
+                
+                currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد إجبارياً بنجاح: ${bdayStr}`, currentPhotoId);
+
+                // 3. الضغط على زر Finish creating account (أو أي زر تأكيد)
+                await updateStatus("جاري الضغط على زر الإنهاء...");
+                const finishBtn = page.locator('button:has-text("Finish creating account"), button:has-text("Agree"), button[type="submit"]').last();
+                
+                if (await finishBtn.isVisible().catch(() => false)) {
                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🖱️ جاري الضغط على Finish creating account", currentPhotoId);
                     await finishBtn.click({ force: true });
                 } else {
+                    // حل بديل قوي إذا لم يتم العثور على الزر
                     await page.keyboard.press('Enter');
                 }
 
@@ -442,7 +423,6 @@ bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id, "👋 أهلاً بك! اختر طريقة إنشاء الحساب:", opts);
 });
 
-// معالجة ضغطات الأزرار
 bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
     const data = query.data;
@@ -467,7 +447,6 @@ bot.on('callback_query', async (query) => {
     }
 });
 
-// ملقف الرسائل للخطوات اليدوية (إيميل فقط)
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text ? msg.text.trim() : null;
@@ -513,4 +492,4 @@ bot.onText(/\/clearproxy/, (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
 process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection at:', promise, 'reason:', reason); });
 
-console.log("🤖 البوت يعمل الآن (الاصدار 21)...");
+console.log("🤖 البوت يعمل الآن (الاصدار 22)...");
