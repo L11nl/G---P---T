@@ -1,0 +1,21 @@
+{
+  "name": "gpt-auto-register-telegram-bot",
+  "version": "2.0.0",
+  "description": "ChatGPT Auto Register Bot - Telegram Interface (Railway Deployment)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "puppeteer": "^22.0.0",
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.0",
+    "winston": "^3.13.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}
