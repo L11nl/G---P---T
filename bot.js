@@ -1,11 +1,11 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 24 (مستوحى من كود Python الناجح)
+ * ChatGPT Bot Creator - الاصدار 25
  * ==========================================================
- * - تم تحويل استراتيجية المواليد من كود Python الأصلي إلى JS.
- * - البوت يبحث عن حقل (spinbutton) الخاص بالشهر ويضغط عليه.
- * - يكتب الأرقام متصلة (04242000) لتعني 2000/4/24 ليوزعها الموقع تلقائياً.
- * - تم دمج Mail.tm والأزرار اليدوية/التلقائية بنجاح.
+ * - الحفاظ على نجاح الانشاء اليدوي وطريقة المواليد (Python Logic) 100%.
+ * - تم إزالة Mail.tm بالكامل دون التأثير على استقرار البوت.
+ * - تم ربط API الجديد (USMAIL) للإنشاء التلقائي.
+ * - جلب الدومينات، توليد الإيميل، وقراءة كود التفعيل من غرفة master.
  * ==========================================================
  */
 
@@ -34,8 +34,21 @@ let isProcessing = false;
 let activeProxy = null;
 const userState = {};
 
-// إعدادات Mail.tm
-const MAIL_API = 'https://api.mail.tm';
+// ============================================================
+// إعدادات API الجديد (USMAIL)
+// ============================================================
+const USMAIL_API_BASE = "https://usmail.my.id";
+const USMAIL_LICENSE_KEY = "USMAIL-166T-DEMO";
+
+const USMAIL_HEADERS = {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Language": "en-US,en;q=0.9,ar-IQ;q=0.8,ar;q=0.7,en-AU;q=0.6,en-GB;q=0.5,ar-SA;q=0.4,ar-AE;q=0.3",
+    "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36",
+    "X-License-Key": USMAIL_LICENSE_KEY,
+    "Referer": `${USMAIL_API_BASE}/room/master`
+};
+
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function generateSecurePassword() {
@@ -56,56 +69,80 @@ function generateSecurePassword() {
     return password.split('').sort(() => 0.5 - Math.random()).join('');
 }
 
-async function createMailTmAccount(chatId) {
+// ✅ 1. جلب الدومينات وإنشاء الإيميل العشوائي (USMAIL)
+async function createUsMailAccount(chatId) {
     try {
-        const domainsRes = await axios.get(`${MAIL_API}/domains`);
-        const domains = domainsRes.data['hydra:member'] || [];
-        if (domains.length === 0) throw new Error('لا توجد نطاقات متاحة');
-        const domain = domains[Math.floor(Math.random() * domains.length)].domain;
+        const response = await axios.get(`${USMAIL_API_BASE}/api/public/rooms/master/domains`, { headers: USMAIL_HEADERS });
+        
+        const domains = response.data?.domains || [];
+        if (domains.length === 0) throw new Error('لا توجد دومينات متاحة في API');
 
+        const domain = domains[Math.floor(Math.random() * domains.length)];
         const username = faker.person.firstName().toLowerCase() + crypto.randomBytes(2).toString('hex');
         const email = `${username}@${domain}`;
-        const password = generateSecurePassword();
-
-        await bot.sendMessage(chatId, `📧 جاري إنشاء بريد: \`${email}\``, { parse_mode: 'Markdown' });
-
-        await axios.post(`${MAIL_API}/accounts`, { address: email, password: password });
-        const tokenRes = await axios.post(`${MAIL_API}/token`, { address: email, password: password });
         
-        return { email, password, token: tokenRes.data.token };
+        const password = generateSecurePassword(); 
+
+        await bot.sendMessage(chatId, `📧 جاري استخدام بريد USMail: \`${email}\``, { parse_mode: 'Markdown' });
+
+        return { email, password };
     } catch (error) {
-        throw new Error('تعذر إنشاء بريد مؤقت');
+        console.error("❌ خطأ في الاتصال بالـ API:", error.message);
+        throw new Error('تعذر جلب الدومينات من USMail');
     }
 }
 
-async function fetchMailTmMessages(token) {
+// ✅ 2. جلب رسائل الغرفة وفلترتها (USMAIL)
+async function fetchUsMailMessages(email) {
     try {
-        const res = await axios.get(`${MAIL_API}/messages`, { headers: { Authorization: `Bearer ${token}` } });
-        return res.data['hydra:member'] || [];
-    } catch (error) { return []; }
+        const response = await axios.get(`${USMAIL_API_BASE}/api/public/rooms/master/messages`, { headers: USMAIL_HEADERS });
+        const messages = response.data?.messages || response.data?.data || response.data || [];
+        
+        if (!Array.isArray(messages)) return [];
+
+        // فلترة الرسائل الخاصة بالإيميل الذي تم توليده فقط
+        return messages.filter(msg => {
+            const toStr = JSON.stringify(msg.to || msg.envelopeTo || msg.recipient || msg.address || []).toLowerCase();
+            return toStr.includes(email.toLowerCase());
+        });
+    } catch (error) {
+        // سقطة احتياطية في حال كان السيرفر يدعم الاستعلام المباشر
+        try {
+             const fallbackRes = await axios.get(`${USMAIL_API_BASE}/api/public/rooms/master/messages?email=${email}`, { headers: USMAIL_HEADERS });
+             const msgs = fallbackRes.data?.messages || fallbackRes.data?.data || fallbackRes.data || [];
+             return Array.isArray(msgs) ? msgs : [];
+        } catch (e) {
+            return [];
+        }
+    }
 }
 
-async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
+// ✅ 3. انتظار كود التفعيل (USMAIL)
+async function waitForUsMailCode(email, chatId, maxWaitSeconds = 90) {
     const startTime = Date.now();
-    const statusMsg = await bot.sendMessage(chatId, `⏳ في انتظار وصول كود التفعيل إلى البريد...`);
+    const statusMsg = await bot.sendMessage(chatId, `⏳ في انتظار وصول كود التفعيل إلى بريد USMail...`);
 
     while ((Date.now() - startTime) < maxWaitSeconds * 1000) {
-        const messages = await fetchMailTmMessages(token);
+        const messages = await fetchUsMailMessages(email);
+        
         for (const msg of messages) {
-            const content = `${msg.subject || ''} ${msg.intro || ''}`;
+            // البحث عن الكود في كل حقول الرسالة المتاحة
+            const content = `${msg.subject || ''} ${msg.intro || ''} ${msg.text || ''} ${msg.html || ''} ${msg.body || ''}`;
             const codeMatch = content.match(/\b\d{6}\b/);
+            
             if (codeMatch) {
                 await bot.deleteMessage(chatId, statusMsg.message_id).catch(()=>null);
-                await bot.sendMessage(chatId, `📩 **تم استخراج الكود:** \`${codeMatch[0]}\``, { parse_mode: 'Markdown' });
+                await bot.sendMessage(chatId, `📩 **تم استخراج الكود تلقائياً:** \`${codeMatch[0]}\``, { parse_mode: 'Markdown' });
                 return codeMatch[0];
             }
         }
-        await sleep(4000);
+        await sleep(4000); // فحص كل 4 ثواني
     }
     await bot.deleteMessage(chatId, statusMsg.message_id).catch(()=>null);
     return null;
 }
 
+// وظائف التصوير والبث
 async function sendStepPhotoAndCleanup(page, chatId, caption, previousPhotoId = null) {
     try {
         if (previousPhotoId) await bot.deleteMessage(chatId, previousPhotoId).catch(() => {});
@@ -140,7 +177,7 @@ async function simulateHumanActivityFast(page) {
 }
 
 // ============================================================
-// الدالة الرئيسية (مع دمج منطق الـ Python)
+// الدالة الرئيسية المستقرة (الاصدار 25)
 // ============================================================
 async function createAccountLogic(chatId, currentNum, total, manualData = null) {
     const isManual = !!manualData;
@@ -161,17 +198,16 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
     let currentPhotoId = null; 
 
     for (let emailAttempt = 1; emailAttempt <= maxEmailAttempts; emailAttempt++) {
-        let email, mailPassword, mailToken;
+        let email, mailPassword;
         
         if (isManual) {
             email = manualData.email;
             mailPassword = manualData.password;
         } else {
             try {
-                const mailData = await createMailTmAccount(chatId);
+                const mailData = await createUsMailAccount(chatId);
                 email = mailData.email;
                 mailPassword = mailData.password;
-                mailToken = mailData.token;
             } catch (e) {
                 return false; 
             }
@@ -205,7 +241,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
             await simulateHumanActivityFast(page);
 
-            // الضغط على زر Sign up (بمحاكاة كود البايثون)
+            // الضغط على زر Sign up
             const signupBtn = page.getByRole("button", { name: "Sign up" });
             await signupBtn.waitFor({ state: 'visible', timeout: 30000 }).catch(async () => {
                 await page.locator('button:has-text("Sign up")').click();
@@ -262,8 +298,9 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 });
                 if (!code) throw new Error("لم يتم استلام الكود.");
             } else {
-                code = await waitForMailTmCode(email, mailToken, chatId, 100);
-                if (!code) throw new Error("فشل جلب الكود التلقائي.");
+                // الاعتماد على دالة USMail الجديدة
+                code = await waitForUsMailCode(email, chatId, 100);
+                if (!code) throw new Error("فشل جلب الكود التلقائي من USMail.");
             }
 
             // إدخال الكود
@@ -277,7 +314,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             }
             await sleep(2000);
 
-            // زر Continue بعد الكود (مهم جداً)
+            // زر Continue بعد الكود
             const continueBtnAfterCode = page.getByRole("button", { name: "Continue" }).last();
             if (await continueBtnAfterCode.isVisible().catch(()=>false)) {
                 await continueBtnAfterCode.click({ force: true });
@@ -287,7 +324,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await sleep(5000); 
 
             // ==========================================================
-            // 📸 منطق البايثون للاسم والمواليد (مترجم للـ JS)
+            // 📸 منطق البايثون المستقر للاسم والمواليد (تم الحفاظ عليه 100%)
             // ==========================================================
             await updateStatus("جاري كتابة الاسم والمواليد...");
             
@@ -299,24 +336,20 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 await nameInputNode.fill(fullName);
                 await sleep(1000);
                 
-                // 2. المواليد (بطريقة كود الـ Python السحري!)
-                // المواليد المطلوبة 04/24/2000 وتُكتب متصلة
+                // 2. المواليد 
                 const birthdayString = "04242000"; 
                 
-                // البحث عن spinbutton الخاص بالشهر كما في البايثون
                 const monthSpin = page.locator('[role="spinbutton"][aria-label*="month" i]').first();
                 
                 if (await monthSpin.isVisible({ timeout: 5000 }).catch(() => false)) {
                     await monthSpin.click();
                     await sleep(500);
                     
-                    // كتابة الأرقام دفعة واحدة وسيوزعها الموقع تلقائياً
                     await page.keyboard.type(birthdayString, { delay: 100 });
                     await sleep(1500);
                     
-                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد بطريقة البايثون: ${birthdayString}`, currentPhotoId);
+                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد بنجاح: ${birthdayString}`, currentPhotoId);
                 } else {
-                    // سقطة احتياطية إذا لم يجد spinbutton
                     const altBdayInput = page.locator('input[name="birthday"]').first();
                     if (await altBdayInput.isVisible()) {
                         await altBdayInput.click();
@@ -430,4 +463,4 @@ bot.onText(/\/clearproxy/, (msg) => { activeProxy = null; bot.sendMessage(msg.ch
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (الاصدار 24 - كود البايثون المدمج)...");
+console.log("🤖 البوت يعمل (الاصدار 25 - USMail API المدمج)...");
