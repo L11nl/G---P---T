@@ -1,10 +1,10 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 17
+ * ChatGPT Bot Creator - الاصدار 18
  * ==========================================================
- * تم تحديث هذا الاصدار لحل مشكلة التوقف عند صفحة "Check your inbox"
- * بعد ادخال كود التحقق، حيث يقوم البوت الان بالضغط صراحة علىزر Continue.
- * كما تم تحسين نظام بث الصور لإضافة صور للخطوات الجديدة.
+ * - إضافة أزرار تفاعلية (تلقائي / يدوي) بدلاً من الأوامر النصية.
+ * - توليد الباسورد تلقائياً في وضع الإنشاء اليدوي لتسريع العمل.
+ * - حل مشكلة شاشة تأكيد المواليد (اختيار سنة بين 1998-2000 والضغط على Finish).
  * ==========================================================
  */
 
@@ -120,23 +120,17 @@ async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
 // ✅ وظيفة لإرسال وحذف الصور بالتتابع
 async function sendStepPhotoAndCleanup(page, chatId, caption, previousPhotoId = null) {
     try {
-        // حذف الصورة السابقة إن وجدت
         if (previousPhotoId) {
             await bot.deleteMessage(chatId, previousPhotoId).catch(() => {});
         }
-
         const screenshotPath = path.join(__dirname, `step_${Date.now()}.png`);
-        await page.screenshot({ path: screenshotPath, fullPage: false }); // fullPage false لأداء أسرع
-
+        await page.screenshot({ path: screenshotPath, fullPage: false });
         const sent = await bot.sendPhoto(chatId, screenshotPath, { caption: caption });
-        
-        // حذف الملف المحلي
         if (fs.existsSync(screenshotPath)) { fs.unlinkSync(screenshotPath); }
-        
-        return sent.message_id; // إرجاع الآيدي لحذفه في الخطوة القادمة
+        return sent.message_id;
     } catch (err) {
         console.error("خطأ في إرسال الصورة:", err.message);
-        return previousPhotoId; // في حال الخطأ نُعيد نفس الآيدي لضمان المحاولة لاحقاً
+        return previousPhotoId;
     }
 }
 
@@ -162,7 +156,7 @@ async function simulateHumanActivityFast(page) {
 }
 
 // ============================================================
-// الدالة الرئيسية لإنشاء الحساب - الاصدار 17
+// الدالة الرئيسية لإنشاء الحساب
 // ============================================================
 async function createAccountLogic(chatId, currentNum, total, manualData = null) {
     const isManual = !!manualData;
@@ -180,14 +174,13 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
 
     await updateStatus("بدء العملية...");
 
-    // محاولات الإيميل (حتى 4 مرات في حال خطأ Failed to create)
     const maxEmailAttempts = isManual ? 1 : 4; 
-    let currentPhotoId = null; // لتتبع الصور وحذفها
+    let currentPhotoId = null; 
 
     for (let emailAttempt = 1; emailAttempt <= maxEmailAttempts; emailAttempt++) {
         
         if (!isManual && emailAttempt > 1) {
-            await bot.sendMessage(chatId, `🔄 محاولة تغيير الإيميل رقم [${emailAttempt}/${maxEmailAttempts}] بسبب رفض السيرفر...`);
+            await bot.sendMessage(chatId, `🔄 محاولة تغيير الإيميل رقم [${emailAttempt}/${maxEmailAttempts}]...`);
         }
 
         let email, mailPassword, mailToken;
@@ -204,12 +197,12 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 mailToken = mailData.token;
             } catch (e) {
                 await updateStatus(`❌ فشل إنشاء البريد التلقائي: ${e.message}`);
-                return false; // فشل في الحصول على إيميل، ننهي الدورة
+                return false; 
             }
         }
 
-        // كلمة مرور ChatGPT (عشوائية دائماً لضمان القبول)
-        const chatGptPassword = generateSecurePassword(); 
+        // كلمة مرور ChatGPT (للتلقائي عشوائي، ولليدوي هي التي تم توليدها وتمريرها)
+        const chatGptPassword = isManual ? manualData.password : generateSecurePassword(); 
         const fullName = `${faker.person.firstName()} ${faker.person.lastName()}`;
 
         await updateStatus(`بيانات الحساب جاهزة.\n📧 \`${email}\`\n🔑 \`${chatGptPassword}\`\nجاري فتح المتصفح...`);
@@ -237,13 +230,11 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 70000 });
             await simulateHumanActivityFast(page);
 
-            // الضغط على Sign up
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🖱️ الضغط على Sign up", currentPhotoId);
             const signupBtn = page.locator('button:has-text("Sign up")');
             await signupBtn.waitFor({ state: 'visible', timeout: 30000 });
             await signupBtn.click();
 
-            // إدخال الإيميل
             await page.waitForSelector('input[id="email-input"], input[name="email"]', {timeout: 30000});
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 إدخال الإيميل: ${email}`, currentPhotoId);
             const emailInput = page.locator('input[id="email-input"], input[name="email"]');
@@ -251,7 +242,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await sleep(1000);
             await page.keyboard.press('Enter');
 
-            // إدخال كلمة المرور
             await page.waitForSelector('input[type="password"]', {timeout: 30000});
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔐 إدخال كلمة المرور", currentPhotoId);
             const passInput = page.locator('input[type="password"]');
@@ -260,23 +250,20 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await page.keyboard.press('Enter');
 
             await updateStatus("جاري التحقق من قبول البيانات...");
-            await sleep(7000); // وقت كافٍ لظهور الخطأ المحتمل أو الانتقال لصفحة الكود
+            await sleep(7000); 
 
-            // التحقق من خطأ "Failed to create account"
             const failedErrorSelector = 'text="Failed to create account"';
             if (await page.isVisible(failedErrorSelector).catch(()=>false)) {
                 currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "❌ ظهر خطأ: Failed to create account", currentPhotoId);
                 if (!isManual) {
                     shouldRetryWithNewEmail = true;
-                    throw new Error("SERVER_REJECTED_EMAIL"); // الخروج للـ catch لبدء المحاولة التالية
+                    throw new Error("SERVER_REJECTED_EMAIL"); 
                 } else {
                     throw new Error("السيرفر رفض هذا الإيميل اليدوي. يرجى محاولة إيميل آخر لاحقاً.");
                 }
             }
 
-            // إذا وصلنا هنا، لم يظهر الخطأ، ننتقل للكود
             await updateStatus("في انتظار صفحة كود التحقق...");
-            // ننتظر ظهور حقل الكود للتأكد أننا في الصفحة الصحيحة
             await page.waitForSelector('input[aria-label="Verification code"], input[inputmode="numeric"]', {timeout: 45000})
                 .catch(()=>{ throw new Error("لم تظهر صفحة إدخال الكود."); });
 
@@ -285,26 +272,21 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             let code = null;
 
             if (isManual) {
-                // الإنشاء اليدوي - طلب الكود من المستخدم
                 await updateStatus("🛑 توقف المتصفح. يرجى إرسال كود التحقق الآن هنا في الشات.");
                 currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "💬 بانتظار الكود منك...", currentPhotoId);
                 
                 code = await new Promise((resolve) => {
-                    // تعريف مستمع لرسالة واحدة فقط
                     const listener = (msg) => {
                         if (msg.chat.id === chatId && msg.text && /^\d{6}$/.test(msg.text.trim())) {
-                            bot.removeListener('message', listener); // إزالة المستمع فوراً
+                            bot.removeListener('message', listener); 
                             bot.sendMessage(chatId, "✅ تم استلام الكود، جاري إكماله...");
                             resolve(msg.text.trim());
                         } else if (msg.chat.id === chatId && msg.text && msg.text.startsWith('/')) {
-                            // إذا أرسل أمراً آخر، نلغي الانتظار
                             bot.removeListener('message', listener);
                             resolve(null);
                         }
-                        // نتجاهل الرسائل الخاطئة ونستمر في الانتظار
                     };
                     bot.on('message', listener);
-                    // مهلة انتظار للمستخدم دقيقتين
                     setTimeout(() => { 
                         bot.removeListener('message', listener); 
                         resolve(null); 
@@ -314,11 +296,9 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 if (!code) throw new Error("تم إلغاء العملية أو انتهى وقت انتظار الكود.");
 
             } else {
-                // الإنشاء التلقائي - جلب الكود من API
                 code = await waitForMailTmCode(email, mailToken, chatId, 100);
                 
                 if (!code) {
-                    // محاولة ضغط إعادة الإرسال مرة واحدة
                     const resendBtn = page.locator('button:has-text("Resend email")');
                     if (await resendBtn.isVisible().catch(() => false)) {
                         await resendBtn.click();
@@ -329,16 +309,13 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 if (!code) throw new Error("لم يتم استلام الكود تلقائياً بعد المحاولات.");
             }
 
-            // إدخال الكود في المتصفح
             await updateStatus(`جاري إدخال الكود: \`${code}\`...`);
             
-            // محاولة ذكية لإدخال الكود
             const codeInput = await page.$('input[aria-label="Verification code"], input[inputmode="numeric"]');
             if (codeInput) {
                 await codeInput.click();
                 await page.keyboard.type(code, { delay: 100 });
             } else {
-                // سقطة احتياطية
                 await page.keyboard.press('Tab');
                 await page.keyboard.type(code, { delay: 100 });
             }
@@ -346,40 +323,50 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await sleep(3000);
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "⏳ تم ملء الكود وجاري الانتقال لزر التقديم", currentPhotoId);
 
-            // ==========================================================
-            // 📸 [التعديل الأهم - الاصدار 17] الضغط صراحة على زر Continue لتأكيد الكود
-            // ==========================================================
             await updateStatus("جاري البحث عن زر Continue للضغط عليه...");
-            
-            // محدد زر Continue (الزر الأسود في واجهة ChatGPT)
-            const continueCodeBtnSelector = 'button:has-text("Continue")';
-            const continueCodeBtn = page.locator(continueCodeBtnSelector);
-            
-            // ننتظر ظهور الزر
+            const continueCodeBtn = page.locator('button:has-text("Continue")');
             await continueCodeBtn.waitFor({ state: 'visible', timeout: 20000 })
-                .catch(()=>{ throw new Error("لم يظهر زر Continue بعد ملء الكود (يدوي)."); });
+                .catch(()=>{ throw new Error("لم يظهر زر Continue بعد ملء الكود."); });
 
-            // تصوير الزر قبل الضغط عليه (ضمان إرسال صورة جديدة)
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🖱️ جاري الضغط صراحة على زر Continue", currentPhotoId);
-            
             await continueCodeBtn.click();
-            await sleep(8000); // وقت كافٍ للمعالجة بعد الضغط
+            await sleep(8000); 
 
-            // تصوير الصفحة بعد الضغط
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "⏳ جاري الانتظار بعد الضغط على Continue", currentPhotoId);
 
-            // إدخال الاسم إذا طلب
-            await updateStatus("جاري التحقق من طلب الاسم...");
+            // ==========================================================
+            // 📸 إدخال الاسم والمواليد (تحديث الاصدار 18)
+            // ==========================================================
+            await updateStatus("جاري التحقق من طلب الاسم والمواليد...");
             const nameInput = await page.waitForSelector('input[name="name"]', { timeout: 25000 }).catch(() => null);
             if (nameInput) {
                 currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 صفحة طلب الاسم مفتوحة", currentPhotoId);
+                
+                // 1. تعبئة الاسم
                 await nameInput.fill(fullName);
                 await sleep(1000);
-                await page.keyboard.press('Enter');
-                await sleep(8000); // وقت كافٍ للانتقال للرئيسية
+                
+                // 2. تعبئة المواليد (اختيار 10/10/ لتجنب مشاكل الصيغ، وسنة بين 1998 و 2000)
+                const bdayInput = await page.$('input[name="birthday"], input[id*="birth" i], input[id="dateOfBirth"], input[placeholder*="birth" i]');
+                if (bdayInput) {
+                    const randomYear = [1998, 1999, 2000][Math.floor(Math.random() * 3)];
+                    const bdayStr = `10/10/${randomYear}`;
+                    await bdayInput.fill(bdayStr);
+                    await sleep(1000);
+                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد: ${bdayStr}`, currentPhotoId);
+                }
+
+                // 3. الضغط على زر Finish أو Enter
+                const finishBtn = page.locator('button:has-text("Finish creating account")');
+                if (await finishBtn.isVisible().catch(() => false)) {
+                    await finishBtn.click();
+                } else {
+                    await page.keyboard.press('Enter');
+                }
+
+                await sleep(8000); 
             }
 
-            // التحقق من النجاح النهائي (الوصول للصفحة الرئيسية)
             await updateStatus("في انتظار الوصول للصفحة الرئيسية...");
             await page.waitForURL('**/chat', {timeout: 30000}).catch(()=>{});
             
@@ -390,119 +377,102 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                  await bot.sendMessage(chatId, `✅ **تم إنشاء الحساب بنجاح ${modeText}:**\n\`${result}\``, { parse_mode: 'Markdown' });
                  accountCreatedSuccessfully = true;
             } else {
-                throw new Error("تم إدخال الكود والضغط على Continue ولكن لم يتم تحويلنا للصفحة الرئيسية (قد يكون الحساب حُظر أو هناك خطأ).");
+                throw new Error("تم إدخال البيانات ولكن لم يتم تحويلنا للصفحة الرئيسية (قد يكون الحساب حُظر).");
             }
 
         } catch (error) {
-            // معالجة الأخطاء
             if (shouldRetryWithNewEmail) {
                 console.log("إعادة المحاولة بإيميل جديد...");
             } else {
-                // تصوير الخطأ قبل الإغلاق
                 await reportErrorWithScreenshot(page, chatId, error.message, tempDir);
             }
         } finally {
-            // التنظيف وإغلاق المتصفح في كل محاولة إيميل
             if (context) await context.close().catch(()=>{});
             try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
-            
-            // حذف آخر صورة للخطوات ليبقى الشات نظيفاً (الا لقطة الخطأ ترسل منفردة)
             if (currentPhotoId) { await bot.deleteMessage(chatId, currentPhotoId).catch(()=>{}); currentPhotoId = null; }
         }
 
-        // إذا نجح إنشاء الحساب، نخرج من حلقة محاولات الإيميل
         if (accountCreatedSuccessfully) return true;
-        
-        // إذا لم يكن خطأ رغبة في الإعادة بإيميل جديد، نوقف العمليات كلياً لهذا الحساب
         if (!shouldRetryWithNewEmail) return false; 
     }
 
-    // إذا وصلنا هنا، يعني استنفدنا الـ 4 محاولات إيميل (في التلقائي) ولم ينجح
     if (!isManual) {
         await bot.sendMessage(chatId, `❌ فشل إنشاء الحساب بعد ${maxEmailAttempts} محاولات لتغيير الإيميل.`);
     }
     return false;
 }
 
-// === أوامر البوت ===
+// === أوامر البوت (تحديث الاصدار 18: أزرار تفاعلية) ===
 
 bot.onText(/\/start/, (msg) => {
-    const opts = { parse_mode: 'Markdown' };
-    bot.sendMessage(msg.chat.id, 
-        "👋 أهلاً بك!\n\n" +
-        "🤖 **الإنشاء التلقائي:**\n" +
-        "استخدم `/create 1` لإنشاء حساب واحد (سيقوم البوت بكل شيء، ويغير الإيميل تلقائياً إذا رُفض حتى 4 مرات).\n\n" +
-        "✍️ **الإنشاء اليدوي:**\n" +
-        "استخدم `/manual_create` (سيطلب منك الإيميل والباسورد، ثم سيطلب منك الكود عندما يصلك)."
-    , opts);
+    const opts = {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '🤖 إنشاء تلقائي (حساب 1)', callback_data: 'create_auto' }],
+                [{ text: '✍️ إنشاء يدوي', callback_data: 'create_manual' }]
+            ]
+        }
+    };
+    bot.sendMessage(msg.chat.id, "👋 أهلاً بك! اختر طريقة إنشاء الحساب:", opts);
 });
 
-// أمر الإنشاء التلقائي
-bot.onText(/\/create (.+)/, async (msg, match) => {
-    if (isProcessing) return bot.sendMessage(msg.chat.id, "⚠️ البوت مشغول حالياً بعملية أخرى.");
-    
-    // إلغاء أي حالة يدوية معلقة
-    delete userState[msg.chat.id];
+// معالجة ضغطات الأزرار
+bot.on('callback_query', async (query) => {
+    const chatId = query.message.chat.id;
+    const data = query.data;
 
-    const num = parseInt(match[1]);
-    if (isNaN(num) || num <= 0) return bot.sendMessage(msg.chat.id, "❌ يرجى كتابة رقم صحيح. مثال: `/create 1`", {parse_mode:'Markdown'});
+    // إخفاء التحميل عن الزر
+    bot.answerCallbackQuery(query.id).catch(() => {});
 
-    isProcessing = true;
-    for (let i = 1; i <= num; i++) {
-        await createAccountLogic(msg.chat.id, i, num, null); // null تعني تلقائي
-        await sleep(5000); // راحة أطول بين الحسابات
+    if (data === 'create_auto') {
+        if (isProcessing) return bot.sendMessage(chatId, "⚠️ البوت مشغول حالياً بعملية أخرى.");
+        delete userState[chatId];
+        isProcessing = true;
+        
+        bot.sendMessage(chatId, "🚀 بدء الإنشاء التلقائي...");
+        await createAccountLogic(chatId, 1, 1, null);
+        
+        isProcessing = false;
+        bot.sendMessage(chatId, "🏁 اكتملت العملية التلقائية.");
+    } 
+    else if (data === 'create_manual') {
+        if (isProcessing) return bot.sendMessage(chatId, "⚠️ البوت مشغول حالياً بعملية أخرى.");
+        userState[chatId] = { step: 'awaiting_email' };
+        bot.sendMessage(chatId, "➡️ [إنشاء يدوي] يرجى إرسال **الإيميل** الذي تريد استخدامه فقط (وسأقوم بتوليد الباسورد لك):", {parse_mode: 'Markdown'});
     }
-    isProcessing = false;
-    bot.sendMessage(msg.chat.id, "🏁 اكتملت جميع العمليات التلقائية.");
 });
 
-// امر الإنشاء اليدوي - البداية
-bot.onText(/\/manual_create/, (msg) => {
-    if (isProcessing) return bot.sendMessage(msg.chat.id, "⚠️ البوت مشغول حالياً.");
-    
-    userState[msg.chat.id] = { step: 'awaiting_email' };
-    bot.sendMessage(msg.chat.id, "➡️ [إنشاء يدوي] يرجى إرسال **الإيميل** الذي تريد استخدامه:", {parse_mode: 'Markdown'});
-});
-
-// ملقف الرسائل للخطوات اليدوية (إيميل -> باسورد)
+// ملقف الرسائل للخطوات اليدوية (إيميل فقط)
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text ? msg.text.trim() : null;
 
-    if (!userState[chatId] || !text || text.startsWith('/')) return; // تجاهل إذا لم تكن هناك حالة أو كان أمراً
+    if (!userState[chatId] || !text || text.startsWith('/')) return; 
 
     const state = userState[chatId];
 
     if (state.step === 'awaiting_email') {
-        // تحقق بسيط من صيغة الإيميل
         if (!text.includes('@') || !text.includes('.')) {
             return bot.sendMessage(chatId, "❌ يرجى إرسال إيميل صحيح.");
         }
-        state.email = text;
-        state.step = 'awaiting_password';
-        bot.sendMessage(chatId, `✅ تم تسجيل الإيميل.\n➡️ الآن يرجى إرسال **الباسورد** الخاص بهذا الإيميل (ليتمكن البوت من قراءة الكود إذا كان Mail.tm، أو للبقاء كمرجع لديك):`, {parse_mode: 'Markdown'});
-    
-    } else if (state.step === 'awaiting_password') {
-        state.password = text;
-        const emailToUse = state.email;
-        const passToUse = state.password;
         
-        // تنظيف الحالة وبدء المعالجة
+        const emailToUse = text;
+        const autoGeneratedPassword = generateSecurePassword(); 
+        
         delete userState[chatId];
         
         if (isProcessing) return bot.sendMessage(chatId, "⚠️ البوت انشغل بعملية أخرى للتو، ألغيت العملية اليدوية.");
         
         isProcessing = true;
-        bot.sendMessage(chatId, "🚀 جاري بدء الإنشاء اليدوي...");
+        bot.sendMessage(chatId, `✅ تم تسجيل الإيميل.\n🔑 تم توليد كلمة مرور تلقائية: \`${autoGeneratedPassword}\`\n🚀 جاري بدء الإنشاء اليدوي...`, {parse_mode: 'Markdown'});
         
-        // استدعاء الدالة الرئيسية مع بيانات يدوي
-        await createAccountLogic(chatId, 1, 1, { email: emailToUse, password: passToUse });
+        await createAccountLogic(chatId, 1, 1, { email: emailToUse, password: autoGeneratedPassword });
         
         isProcessing = false;
         bot.sendMessage(chatId, "🏁 انتهت العملية اليدوية.");
     }
 });
-
 
 bot.onText(/\/setproxy (.+)/, (msg, match) => {
     let server = match[1].trim();
@@ -516,8 +486,7 @@ bot.onText(/\/clearproxy/, (msg) => {
     bot.sendMessage(msg.chat.id, "🗑️ تم إيقاف البروكسي.");
 });
 
-// معالجة الأخطاء غير المتوقعة لمنع توقف البوت
 process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
 process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection at:', promise, 'reason:', reason); });
 
-console.log("🤖 البوت يعمل الآن (الاصدار 17)...");
+console.log("🤖 البوت يعمل الآن (الاصدار 18)...");
