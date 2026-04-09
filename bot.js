@@ -21,7 +21,7 @@ let isProcessing = false;
 let activeProxy = null;
 
 const API_BASE_URL = 'https://usmail.my.id';
-const API_LICENSE_KEY = 'USMAIL-166T-DEMO';
+const API_LICENSE_KEY = 'USMAIL-166T-DEMO'; // المفتاح المطلوب
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -118,26 +118,35 @@ async function createAccount(chatId, current, total) {
         frameId = await sendMovingFrame(emailPage, chatId, frameId, `جاري فحص حالة صندوق الإيميل..`);
         await sleep(2000);
 
-        // 1. فحص وجود مربع المفتاح ومعالجته بذكاء أقوى
+        // 1. المعالجة القهرية لمربع المفتاح والزر الأخضر
         try {
             const keyInput = emailPage.locator('input[placeholder*="LISENSI" i], input[type="password"], input[name="key"], input[placeholder*="License" i]').first();
             if (await keyInput.isVisible({ timeout: 5000 })) {
+                // التركيز على المربع لضمان تفعيله
+                await keyInput.focus();
+                await sleep(500);
+                
                 await keyInput.fill(API_LICENSE_KEY);
                 frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم وضع المفتاح ${API_LICENSE_KEY}..`);
                 await sleep(1000);
                 
-                // التحديث الجديد: الضغط على زر Enter من الكيبورد مباشرة وهو الأضمن
-                await emailPage.keyboard.press('Enter');
-                await sleep(1000);
+                // التحديث الأقوى 1: الضغط على إنتر من نفس المربع
+                await keyInput.press('Enter');
+                await sleep(1500);
                 
-                // التحديث الجديد: استخدام محدد شامل للزر والضغط عليه بالقوة (force)
-                const enterBtn = emailPage.locator(':text("Buka Dashboard"), :text("Buka"), .bg-success, .btn-success, button[type="submit"]').first();
-                if (await enterBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
-                    await enterBtn.click({ force: true });
-                }
+                // التحديث الأقوى 2: حقن جافاسكريبت للبحث عن الزر والضغط عليه من داخل كود الموقع
+                await emailPage.evaluate(() => {
+                    const buttons = document.querySelectorAll('button');
+                    for (let btn of buttons) {
+                        if (btn.textContent.includes('Buka') || btn.textContent.includes('Dashboard') || btn.className.includes('success')) {
+                            btn.click();
+                            break;
+                        }
+                    }
+                }).catch(() => {});
                 
                 await sleep(4000);
-                frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم محاولة الدخول للمسار 🖱️`);
+                frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم تنفيذ أوامر الدخول القهرية 🖱️`);
             }
         } catch(e) {
             console.log("لم يظهر قفل المفتاح، جاري المتابعة...");
@@ -149,7 +158,7 @@ async function createAccount(chatId, current, total) {
             if (await roomInput.isVisible({ timeout: 4000 })) {
                 await roomInput.fill(username);
                 frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم كتابة الإيميل المؤقت..`);
-                await emailPage.keyboard.press('Enter');
+                await roomInput.press('Enter');
                 await sleep(3000);
             }
         } catch(e) {}
@@ -228,6 +237,7 @@ async function createAccount(chatId, current, total) {
 
     } catch (error) {
         await bot.sendMessage(chatId, `❌ توقف العمل: ${error.message}`);
+        // صورة الخطأ النهائية ثابتة دائماً
         if (page) {
             const errBuffer = await page.screenshot({ fullPage: true, quality: 75, type: 'jpeg' });
             await bot.sendPhoto(chatId, errBuffer, { caption: '📸 الشاشة وقت حدوث المشكلة' }, { filename: 'error.jpg', contentType: 'image/jpeg' });
@@ -239,7 +249,7 @@ async function createAccount(chatId, current, total) {
 }
 
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "👋 أهلاً نبيل! البوت المحدث (نسخة 14.1) جاهز لإنشاء حسابات ChatGPT على دومينات usmail بدقة واحترافية عالية 🚀\nاستخدم أمر `/create 1` للبدء.");
+    bot.sendMessage(msg.chat.id, "👋 أهلاً نبيل! البوت المحدث (نسخة 15 - كاسرة الأزرار) جاهز لإنشاء حسابات ChatGPT 🚀\nاستخدم أمر `/create 1` للبدء.");
 });
 
 bot.onText(/\/create (.+)/, async (msg, match) => {
