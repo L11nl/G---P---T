@@ -11,7 +11,7 @@ chromium.use(stealth);
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
-    console.error("❌ BOT_TOKEN مفقود في متغيرات البيئة.");
+    console.error("❌ خطأ: BOT_TOKEN مفقود في إعدادات Railway.");
     process.exit(1);
 }
 
@@ -20,329 +20,360 @@ const ACCOUNTS_FILE = 'accounts.txt';
 let isProcessing = false;
 let activeProxy = null;
 
-const API_BASE_URL = 'https://usmail.my.id';
-const API_LICENSE_KEY = 'USMAIL-166T-DEMO';
+// ========== إعدادات API البريد الجديد ==========
+const API_BASE = 'https://usmail.my.id';
+const LICENSE_KEY = 'USMAIL-166T-DEMO';
+
+/**
+ * تسجيل بريد إلكتروني جديد
+ */
+async function registerEmail(email) {
+    try {
+        const response = await axios.post(
+            `${API_BASE}/api/public/rooms/master/register-email`,
+            { email: email },
+            {
+                headers: {
+                    'X-License-Key': LICENSE_KEY,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 10000
+            }
+        );
+        return response.data.success === true;
+    } catch (error) {
+        console.error('فشل تسجيل البريد:', error.response?.data || error.message);
+        return false;
+    }
+}
+
+/**
+ * جلب جميع الرسائل الواردة لبريد معين
+ */
+async function fetchInbox(email) {
+    const encodedEmail = encodeURIComponent(email);
+    try {
+        const response = await axios.get(`${API_BASE}/api/emails/${encodedEmail}`, {
+            timeout: 10000
+        });
+        return response.data;
+    } catch (error) {
+        console.error('فشل جلب الرسائل:', error.response?.status);
+        return [];
+    }
+}
+
+/**
+ * انتظار وصول كود تفعيل من البريد
+ */
+async function waitForVerificationCode(email, maxWaitSeconds = 120) {
+    const startTime = Date.now();
+    console.log(`⏳ في انتظار وصول رسالة إلى ${email} ...`);
+
+    while ((Date.now() - startTime) < maxWaitSeconds * 1000) {
+        const messages = await fetchInbox(email);
+        
+        if (Array.isArray(messages) && messages.length > 0) {
+            const latestMessage = messages[0];
+            const content = latestMessage.body || latestMessage.text || latestMessage.content || '';
+            
+            const codeMatch = content.match(/\b\d{4,8}\b/);
+            if (codeMatch) {
+                console.log(`✅ تم استخراج الكود: ${codeMatch[0]}`);
+                return codeMatch[0];
+            }
+        }
+        await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+    console.log(`⌛ لم يتم استقبال أي كود خلال ${maxWaitSeconds} ثانية.`);
+    return null;
+}
+// ========== نهاية دوال البريد الجديدة ==========
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function generateSecurePassword() {
-    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    const length = 16;
+    const lower = "abcdefghijklmnopqrstuvwxyz";
+    const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const nums = "0123456789";
+    const symbols = "!@#$%^&*";
+    const all = lower + upper + nums + symbols;
+
     let password = "";
-    for (let i = 0; i < 16; i++) password += charset[crypto.randomInt(0, charset.length)];
-    return password;
+    password += lower[crypto.randomInt(0, lower.length)];
+    password += upper[crypto.randomInt(0, upper.length)];
+    password += nums[crypto.randomInt(0, nums.length)];
+    password += symbols[crypto.randomInt(0, symbols.length)];
+
+    for (let i = 0; i < length - 4; i++) password += all[crypto.randomInt(0, all.length)];
+    return password.split('').sort(() => 0.5 - Math.random()).join('');
 }
 
-async function generateRandomEmail() {
+// ✅ توليد وتسجيل إيميل جديد باستخدام API الجديد
+async function generateAndRegisterEmail(chatId) {
     const username = `${faker.person.firstName().toLowerCase()}${crypto.randomBytes(3).toString('hex')}`;
-    const headers = {
-        'Accept': '*/*',
-        'X-License-Key': API_LICENSE_KEY,
-        'Referer': `${API_BASE_URL}/room/master`
-    };
-    try {
-        const res = await axios.get(`${API_BASE_URL}/api/public/rooms/master/domains`, { headers, timeout: 5000 });
-        const domains = (res.data && res.data.success) ? res.data.domains : ["usmail.my.id", "toolsmail.me"];
-        return { email: `${username}@${domains[Math.floor(Math.random() * domains.length)]}`, username };
-    } catch (e) {
-        return { email: `${username}@usmail.my.id`, username };
-    }
-}
-
-async function sendMovingFrame(page, chatId, oldMessageId, caption) {
-    if (!page || page.isClosed()) return oldMessageId;
-    try {
-        const imageBuffer = await page.screenshot({ quality: 75, type: 'jpeg' });
-        if (oldMessageId) await bot.deleteMessage(chatId, oldMessageId).catch(() => {});
-        const sentMsg = await bot.sendPhoto(chatId, imageBuffer, { caption: `🔴 المتصفح الآن | ${caption}` }, { filename: 'frame.jpg', contentType: 'image/jpeg' });
-        return sentMsg.message_id;
-    } catch (err) {
-        return oldMessageId;
-    }
-}
-
-async function createAccount(chatId, current, total) {
-    const status = await bot.sendMessage(chatId, `🚀 بدأت عملية الحساب [${current}/${total}]...`);
+    const domain = 'usmail.my.id'; // النطاق الرئيسي
+    const email = `${username}@${domain}`;
     
-    const { email, username } = await generateRandomEmail();
-    const password = generateSecurePassword();
+    await bot.sendMessage(chatId, `📧 جاري تسجيل البريد: \`${email}\``, { parse_mode: 'Markdown' });
+    
+    const registered = await registerEmail(email);
+    if (!registered) {
+        // محاولة نطاق احتياطي
+        const fallbackEmail = `${username}@toolsmail.me`;
+        await bot.sendMessage(chatId, `⚠️ فشل التسجيل بالنطاق الرئيسي، تجربة ${fallbackEmail}`);
+        const fallbackRegistered = await registerEmail(fallbackEmail);
+        if (!fallbackRegistered) {
+            throw new Error('فشل تسجيل البريد الإلكتروني بجميع المحاولات');
+        }
+        return { email: fallbackEmail, username };
+    }
+    return { email, username };
+}
+
+// ✅ جلب الكود باستخدام waitForVerificationCode الجديدة (مع إشعار البوت)
+async function getCodeFromEmail(email, chatId, maxWait = 90) {
+    await bot.sendMessage(chatId, `⏳ في انتظار كود التفعيل من البريد...`);
+    const code = await waitForVerificationCode(email, maxWait);
+    if (code) {
+        await bot.sendMessage(chatId, `📩 **تم استخراج الكود:** \`${code}\``, { parse_mode: 'Markdown' });
+    }
+    return code;
+}
+
+// ✅ بث مباشر حقيقي (تعديل نفس الرسالة)
+function startLiveStream(page, chatId, intervalMs = 500) {
+    let messageId = null;
+    let stopped = false;
+    let timer = null;
+
+    const updateFrame = async () => {
+        if (stopped || !page || page.isClosed()) return;
+        try {
+            const screenshotPath = path.join(__dirname, `live_${Date.now()}.png`);
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+
+            if (!messageId) {
+                const sent = await bot.sendPhoto(chatId, screenshotPath, {
+                    caption: '🔴 بث مباشر | جاري العمل...'
+                });
+                messageId = sent.message_id;
+            } else {
+                await bot.editMessageMedia(
+                    {
+                        type: 'photo',
+                        media: `attach://${path.basename(screenshotPath)}`,
+                        caption: '🔴 بث مباشر | جاري العمل...'
+                    },
+                    {
+                        chat_id: chatId,
+                        message_id: messageId
+                    }
+                ).catch(async (err) => {
+                    if (err.response?.statusCode === 400) {
+                        const sent = await bot.sendPhoto(chatId, screenshotPath, {
+                            caption: '🔴 بث مباشر | جاري العمل...'
+                        });
+                        messageId = sent.message_id;
+                    }
+                });
+            }
+            fs.unlinkSync(screenshotPath);
+        } catch (err) {}
+    };
+
+    updateFrame();
+    timer = setInterval(updateFrame, intervalMs);
+
+    return { stop: () => { stopped = true; clearInterval(timer); } };
+}
+
+async function simulateHumanActivityFast(page) {
+    try {
+        await page.mouse.wheel(0, 300);
+        await sleep(300);
+        await page.mouse.move(500, 400, { steps: 3 });
+    } catch (e) {}
+}
+
+async function createAccount(chatId, currentNum, total) {
+    const statusMsg = await bot.sendMessage(chatId, `⚡ جاري العمل على [${currentNum}/${total}]...`);
+
+    let emailData, password;
+    try {
+        await bot.editMessageText(`⚙️ جاري توليد وتسجيل الإيميل...`, { chat_id: chatId, message_id: statusMsg.message_id });
+        emailData = await generateAndRegisterEmail(chatId);
+        password = generateSecurePassword();
+    } catch (e) {
+        await bot.editMessageText(`❌ فشل تسجيل الإيميل: ${e.message}`, { chat_id: chatId, message_id: statusMsg.message_id });
+        return false;
+    }
+
+    const { email, username } = emailData;
     const fullName = `${faker.person.firstName()} ${faker.person.lastName()}`;
 
-    await bot.editMessageText(`📧 \`${email}\`\n🔑 \`${password}\`\n🚀 جاري تشغيل المتصفح...`, { chat_id: chatId, message_id: status.message_id, parse_mode: 'Markdown' });
+    await bot.editMessageText(`📧 \`${email}\`\n🔑 \`${password}\`\n🚀 جاري فتح المتصفح...`, {
+        chat_id: chatId, message_id: statusMsg.message_id, parse_mode: 'Markdown'
+    });
 
-    const tempDir = fs.mkdtempSync(path.join(__dirname, 'chatgpt_bot_'));
-    let context, page, emailPage, frameId = null;
+    const tempDir = fs.mkdtempSync(path.join(__dirname, 'chatgpt_fast_'));
+    let context, page;
+    let liveStream = null;
 
     try {
-        context = await chromium.launchPersistentContext(tempDir, {
+        const browserOptions = {
             headless: true,
-            args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
-            viewport: { width: 1280, height: 720 }
-        });
-        page = await context.newPage();
-        
-        frameId = await sendMovingFrame(page, chatId, frameId, "فتح موقع ChatGPT");
-        await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 45000 });
-        await sleep(2000);
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
+            viewport: { width: 1366, height: 768 },
+            timeout: 30000
+        };
+        if (activeProxy) browserOptions.proxy = { server: activeProxy.server };
 
-        const signup = page.locator('button:has-text("Sign up")');
-        await signup.waitFor({ state: 'visible', timeout: 15000 });
-        frameId = await sendMovingFrame(page, chatId, frameId, "الضغط على التسجيل (Sign up)");
-        await signup.click();
+        context = await Promise.race([
+            chromium.launchPersistentContext(tempDir, browserOptions),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout أثناء فتح المتصفح')), 40000))
+        ]);
+        
+        page = await context.newPage();
+        await bot.editMessageText(`🌐 تم فتح المتصفح، جاري تحميل صفحة ChatGPT...`, {
+            chat_id: chatId, message_id: statusMsg.message_id
+        });
+
+        liveStream = startLiveStream(page, chatId, 600);
+
+        await Promise.race([
+            page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 45000 }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout أثناء تحميل صفحة ChatGPT')), 50000))
+        ]);
+
+        await simulateHumanActivityFast(page);
+        await bot.editMessageText(`🖱️ الضغط على زر Sign up...`, { chat_id: chatId, message_id: statusMsg.message_id });
+
+        const signupBtn = page.locator('button:has-text("Sign up")');
+        await signupBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {
+            throw new Error('زر Sign up غير موجود');
+        });
+        await signupBtn.click();
+
+        await bot.editMessageText(`📝 إدخال الإيميل...`, { chat_id: chatId, message_id: statusMsg.message_id });
+        const emailInput = page.locator('input[id="email-input"], input[name="email"]');
+        await emailInput.waitFor({ state: 'visible', timeout: 15000 });
+        await emailInput.fill(email);
+        await page.keyboard.press('Enter');
+
+        await bot.editMessageText(`🔐 إدخال كلمة المرور...`, { chat_id: chatId, message_id: statusMsg.message_id });
+        const passInput = page.locator('input[type="password"]');
+        await passInput.waitFor({ state: 'visible', timeout: 15000 });
+        await passInput.fill(password);
+        await page.keyboard.press('Enter');
+
         await sleep(3000);
 
-        const emailInp = page.locator('input[name="email"]');
-        await emailInp.waitFor({ state: 'visible', timeout: 15000 });
-        await emailInp.fill(email);
-        frameId = await sendMovingFrame(page, chatId, frameId, `كتابة الإيميل: ${email}`);
-        await page.keyboard.press('Enter');
-        await sleep(4000);
-
-        const passInp = page.locator('input[type="password"]');
-        await passInp.waitFor({ state: 'visible', timeout: 15000 });
-        await passInp.fill(password);
-        frameId = await sendMovingFrame(page, chatId, frameId, "كتابة الباسورد");
-        await page.keyboard.press('Enter');
-        await sleep(5000);
-
-        frameId = await sendMovingFrame(page, chatId, frameId, "طلب رمز التحقق.. جاري فتح صفحة الإيميل والمفتاح 🔄");
-        
-        emailPage = await context.newPage(); 
-        await emailPage.goto(`${API_BASE_URL}/room/${username}`, { waitUntil: "domcontentloaded" });
-        frameId = await sendMovingFrame(emailPage, chatId, frameId, `جاري فحص حالة صندوق الإيميل..`);
-        await sleep(2000);
-
-        // ===================== التعديل الأساسي هنا =====================
-        // بدلاً من الضغط على Enter، سنبحث عن الزر ونضغط عليه بالماوس
         try {
-            const keyInput = emailPage.locator('input').first();
-            if (await keyInput.isVisible({ timeout: 5000 })) {
-                await keyInput.click();
-                await sleep(500);
-                
-                // طباعة المفتاح حرفاً بحرف
-                await keyInput.pressSequentially(API_LICENSE_KEY, { delay: 150 });
-                frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم طباعة المفتاح حرفاً بحرف ⌨️`);
-                await sleep(1500);
-                
-                // 🔥🔥🔥 الضغط بالماوس على الزر المناسب 🔥🔥🔥
-                frameId = await sendMovingFrame(emailPage, chatId, frameId, `جاري النقر بالماوس على زر "Buka Dashboard"...`);
-                
-                // 1. محاولة العثور على الزر والنقر عليه بالماوس
-                let clicked = false;
-                const selectors = [
-                    'button:has-text("Buka")',
-                    'button:has-text("Dashboard")',
-                    'button:has-text("Go")',
-                    'button:has-text("Access")',
-                    'button:has-text("Open")',
-                    'a:has-text("Buka")',
-                    'a:has-text("Dashboard")',
-                    'button[type="submit"]',
-                    '.btn-success',
-                    '.btn-primary'
-                ];
-                
-                for (const sel of selectors) {
-                    const btn = emailPage.locator(sel).first();
-                    if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
-                        // الحصول على موقع الزر
-                        const box = await btn.boundingBox();
-                        if (box) {
-                            // النقر بالماوس في وسط الزر
-                            await emailPage.mouse.click(box.x + box.width/2, box.y + box.height/2);
-                            console.log(`✅ تم النقر بالماوس على الزر: ${sel}`);
-                            frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم النقر بالماوس على الزر (${sel}) 🖱️`);
-                            clicked = true;
-                            await sleep(2000);
-                            break;
-                        }
-                    }
-                }
-                
-                // 2. إذا لم ينجح، البحث عن أي زر يحتوي على النص والنقر بالماوس
-                if (!clicked) {
-                    const buttons = await emailPage.$$('button, a');
-                    for (const btn of buttons) {
-                        const text = await btn.textContent().catch(() => '');
-                        if (text && (text.includes('Buka') || text.includes('Dashboard') || text.includes('Access') || text.includes('Go'))) {
-                            const box = await btn.boundingBox();
-                            if (box) {
-                                await emailPage.mouse.click(box.x + box.width/2, box.y + box.height/2);
-                                console.log(`✅ تم النقر بالماوس على الزر بالنص: "${text}"`);
-                                frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم النقر بالماوس (نص: ${text}) 🖱️`);
-                                clicked = true;
-                                await sleep(2000);
-                                break;
-                            }
-                        }
-                    }
-                }
-                
-                // 3. محاولة النقر بالماوس عبر إحداثيات تقريبية إذا لم نجد الزر
-                if (!clicked) {
-                    // نبحث عن أي زر مرئي قرب حقل الإدخال
-                    const inputBox = await keyInput.boundingBox();
-                    if (inputBox) {
-                        // ننقر أسفل حقل الإدخال مباشرة (غالباً مكان الزر)
-                        await emailPage.mouse.click(inputBox.x + 100, inputBox.y + 50);
-                        frameId = await sendMovingFrame(emailPage, chatId, frameId, `⚠️ تم النقر بالماوس في موقع تقديري أسفل الحقل`);
-                        clicked = true;
-                    }
-                }
-                
-                await sleep(3000);
-            }
-        } catch(e) {
-            console.log("تخطي خطوة المفتاح...");
+            await page.waitForSelector('text="Failed to create account"', { timeout: 3000 });
+            throw new Error("الحساب مرفوض من السيرفر (حظر مؤقت).");
+        } catch (e) {
+            if (e.message.includes("مرفوض")) throw e;
         }
-        // =============================================================
 
-        // 2. وضع الإيميل المؤقت في حال طلبه الموقع
-        try {
-            const roomInput = emailPage.locator('input[placeholder*="username" i], input[placeholder*="email" i], input[name="room"]').first();
-            if (await roomInput.isVisible({ timeout: 4000 })) {
-                await roomInput.fill(username);
-                frameId = await sendMovingFrame(emailPage, chatId, frameId, `تم كتابة الإيميل المؤقت..`);
-                await roomInput.press('Enter');
-                await sleep(3000);
+        await bot.editMessageText(`⏳ في انتظار وصول كود التحقق إلى الإيميل...`, { chat_id: chatId, message_id: statusMsg.message_id });
+
+        // ✅ استخدام الدالة الجديدة لانتظار الكود
+        let code = await getCodeFromEmail(email, chatId, 90);
+
+        if (!code) {
+            const resendBtn = page.locator('button:has-text("Resend email")');
+            if (await resendBtn.isVisible().catch(() => false)) {
+                await resendBtn.click();
+                await bot.sendMessage(chatId, "🔄 ضغطنا إعادة إرسال الكود...");
+                code = await getCodeFromEmail(email, chatId, 60);
             }
-        } catch(e) {}
+        }
 
-        await emailPage.mouse.wheel(0, 400); 
-        frameId = await sendMovingFrame(emailPage, chatId, frameId, `صندوق الوارد (الدخول تم): ${email} - ننتظر الرسالة ⬇️`);
+        if (!code) throw new Error("لم يتم استلام الكود بعد محاولات كثيرة.");
 
-        let code = null;
-        const headers = {
-            'Accept': '*/*',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'X-License-Key': API_LICENSE_KEY,
-            'Referer': `${API_BASE_URL}/room/${username}`
-        };
-        const messagesUrl = `${API_BASE_URL}/api/public/rooms/${username}/messages`;
+        await bot.editMessageText(`✏️ إدخال الكود \`${code}\`...`, {
+            chat_id: chatId, message_id: statusMsg.message_id, parse_mode: 'Markdown'
+        });
 
-        for (let i = 0; i < 20; i++) {
+        const codeSelectors = [
+            'input[aria-label="Verification code"]',
+            'input[inputmode="numeric"]',
+            'input[placeholder*="code" i]',
+            'input[placeholder*="verification" i]',
+            'input[type="text"]',
+            'input[type="number"]'
+        ];
+
+        let filled = false;
+        for (const sel of codeSelectors) {
             try {
-                const res = await axios.get(messagesUrl, { headers, timeout: 3000 });
-                const matches = JSON.stringify(res.data).match(/\b\d{6}\b/g);
-                if (matches) {
-                    code = matches[matches.length - 1];
-                    frameId = await sendMovingFrame(emailPage, chatId, frameId, `✅ تم استلام الكود بنجاح: ${code}`);
+                const input = await page.waitForSelector(sel, { timeout: 3000 });
+                if (input) {
+                    await input.click({ clickCount: 3 });
+                    await input.fill(code);
+                    filled = true;
                     break;
                 }
-            } catch (e) {}
-            
-            if (i % 2 === 0 && !code) {
-                frameId = await sendMovingFrame(emailPage, chatId, frameId, `⏳ ننتظر وصول رسالة OpenAI... (محاولة ${i+1})`);
-            }
-            await sleep(2500);
+            } catch {}
         }
 
-        if (!code) throw new Error("لم يصل الكود للصندوق.");
-
-        await emailPage.close(); 
-        await page.bringToFront(); 
-        frameId = await sendMovingFrame(page, chatId, frameId, "العودة لـ ChatGPT لإدخال الكود 🔙");
-        await sleep(1000);
-
-        const codeInputSelectors = ['input[aria-label="Verification code"]', 'input[type="text"]', 'input[inputmode="numeric"]'];
-        let isCodeFilled = false;
-        
-        for (const sel of codeInputSelectors) {
-            const input = page.locator(sel).first();
-            if (await input.isVisible().catch(()=>false)) {
-                await input.click();
-                await input.fill(code);
-                isCodeFilled = true;
-                break;
-            }
-        }
-        
-        if (!isCodeFilled) {
-            await page.mouse.click(500, 400); 
-            await page.keyboard.type(code, { delay: 100 });
+        if (!filled) {
+            await page.keyboard.press('Tab');
+            await page.keyboard.type(code);
         }
 
-        frameId = await sendMovingFrame(page, chatId, frameId, `تم كتابة الكود بنجاح`);
-        await sleep(5000);
-
-        const nameInp = page.locator('input[name="name"]');
-        if (await nameInp.isVisible({ timeout: 5000 }).catch(()=>false)) {
-            await nameInp.fill(fullName);
-            frameId = await sendMovingFrame(page, chatId, frameId, `إدخال الاسم: ${fullName}`);
+        await sleep(2000);
+        const nameInput = await page.waitForSelector('input[name="name"]', { timeout: 10000 }).catch(() => null);
+        if (nameInput) {
+            await nameInput.fill(fullName);
             await page.keyboard.press('Enter');
-            await sleep(5000);
+            await sleep(3000);
         }
 
         const result = `${email}|${password}`;
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
-        
-        if (frameId) await bot.deleteMessage(chatId, frameId).catch(() => {});
-        await bot.sendMessage(chatId, `\`${result}\``, { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, `✅ **تم إنشاء الحساب بنجاح:**\n\`${result}\``, { parse_mode: 'Markdown' });
+
+        if (liveStream) liveStream.stop();
+        await context.close();
+        return true;
 
     } catch (error) {
-        await bot.sendMessage(chatId, `❌ توقف العمل: ${error.message}`);
+        await bot.sendMessage(chatId, `❌ خطأ أثناء التنفيذ: ${error.message}`);
         if (page) {
-            const errBuffer = await page.screenshot({ fullPage: true, quality: 75, type: 'jpeg' });
-            await bot.sendPhoto(chatId, errBuffer, { caption: '📸 الشاشة وقت حدوث المشكلة' }, { filename: 'error.jpg', contentType: 'image/jpeg' });
+            try {
+                const errPath = path.join(tempDir, 'error.png');
+                await page.screenshot({ path: errPath, fullPage: true });
+                await bot.sendPhoto(chatId, errPath, { caption: '📸 لقطة للخطأ' });
+            } catch {}
         }
-    } finally {
+        if (liveStream) liveStream.stop();
         if (context) await context.close();
-        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch(e) {}
+        return false;
+    } finally {
+        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
     }
 }
 
-// الأزرار
+// === أوامر البوت ===
 bot.onText(/\/start/, (msg) => {
-    const chatId = msg.chat.id;
-    const opts = {
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: "🆕 إنشاء حساب واحد", callback_data: "create_1" }],
-                [{ text: "📦 إنشاء عدة حسابات", callback_data: "create_multi" }]
-            ]
-        }
-    };
-    bot.sendMessage(chatId, "👋 أهلاً بك! البوت جاهز لإنشاء حسابات ChatGPT.\n\nاختر أحد الخيارات:", opts);
+    bot.sendMessage(msg.chat.id, "👋 أهلاً! استخدم `/create 1` لإنشاء حساب ChatGPT مع بث مباشر للشاشة.");
 });
 
-bot.on('callback_query', async (query) => {
-    const chatId = query.message.chat.id;
-    const data = query.data;
-    
-    bot.answerCallbackQuery(query.id);
-    
-    if (data === 'create_1') {
-        if (isProcessing) {
-            return bot.sendMessage(chatId, "⚠️ البوت يعمل على حساب حالياً. انتظر حتى ينتهي.");
-        }
-        isProcessing = true;
-        await createAccount(chatId, 1, 1);
-        isProcessing = false;
-        bot.sendMessage(chatId, "🏁 تم إنشاء الحساب بنجاح.");
-        
-    } else if (data === 'create_multi') {
-        if (isProcessing) {
-            return bot.sendMessage(chatId, "⚠️ البوت يعمل على حساب حالياً. انتظر حتى ينتهي.");
-        }
-        bot.sendMessage(chatId, "🔢 كم حساباً تريد إنشاء؟ أرسل الرقم فقط (مثلاً: 5)");
-        
-        const listenerId = bot.onReplyToMessage(chatId, query.message.message_id, async (replyMsg) => {
-            const num = parseInt(replyMsg.text);
-            if (isNaN(num) || num < 1) {
-                return bot.sendMessage(chatId, "❌ الرجاء إرسال رقم صحيح أكبر من صفر.");
-            }
-            
-            bot.removeReplyListener(listenerId);
-            
-            isProcessing = true;
-            for (let i = 1; i <= num; i++) {
-                await createAccount(chatId, i, num);
-                await sleep(2000);
-            }
-            isProcessing = false;
-            bot.sendMessage(chatId, "🏁 انتهت جميع المهمات.");
-        });
+bot.onText(/\/create (.+)/, async (msg, match) => {
+    if (isProcessing) return bot.sendMessage(msg.chat.id, "⚠️ البوت مشغول حالياً.");
+    const num = parseInt(match[1]);
+    if (isNaN(num) || num <= 0) return bot.sendMessage(msg.chat.id, "يرجى كتابة رقم صحيح.");
+
+    isProcessing = true;
+    for (let i = 1; i <= num; i++) {
+        await createAccount(msg.chat.id, i, num);
+        await sleep(2000);
     }
+    isProcessing = false;
+    bot.sendMessage(msg.chat.id, "🏁 اكتملت جميع العمليات.");
 });
 
 bot.onText(/\/setproxy (.+)/, (msg, match) => {
@@ -356,12 +387,3 @@ bot.onText(/\/clearproxy/, (msg) => {
     activeProxy = null;
     bot.sendMessage(msg.chat.id, "🗑️ تم إيقاف البروكسي.");
 });
-
-bot.onText(/\/stop/, (msg) => {
-    if (!isProcessing) {
-        return bot.sendMessage(msg.chat.id, "ℹ️ لا توجد عملية جارية حالياً.");
-    }
-    bot.sendMessage(msg.chat.id, "⚠️ لا يمكن إيقاف العملية مباشرة حالياً، لكنها ستتوقف بعد انتهاء الحساب الحالي.");
-});
-
-console.log("🤖 البوت يعمل الآن...");
