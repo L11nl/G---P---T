@@ -1,10 +1,10 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 18
+ * ChatGPT Bot Creator - الاصدار 19
  * ==========================================================
- * - إضافة أزرار تفاعلية (تلقائي / يدوي) بدلاً من الأوامر النصية.
- * - توليد الباسورد تلقائياً في وضع الإنشاء اليدوي لتسريع العمل.
- * - حل مشكلة شاشة تأكيد المواليد (اختيار سنة بين 1998-2000 والضغط على Finish).
+ * - تم حل مشكلة حقل المواليد: البوت الآن يحدد النص القديم (2026) ويمسحه، 
+ * ثم يكتب السنة الجديدة (1998-2000) بشكل تدريجي كالبشر لتخطي حماية React.
+ * - تم إصلاح مشكلة عدم الضغط على زر "Finish creating account".
  * ==========================================================
  */
 
@@ -201,7 +201,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             }
         }
 
-        // كلمة مرور ChatGPT (للتلقائي عشوائي، ولليدوي هي التي تم توليدها وتمريرها)
         const chatGptPassword = isManual ? manualData.password : generateSecurePassword(); 
         const fullName = `${faker.person.firstName()} ${faker.person.lastName()}`;
 
@@ -335,32 +334,44 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "⏳ جاري الانتظار بعد الضغط على Continue", currentPhotoId);
 
             // ==========================================================
-            // 📸 إدخال الاسم والمواليد (تحديث الاصدار 18)
+            // 📸 التحديث الأهم (الاصدار 19): الاسم والمواليد والزر النهائي
             // ==========================================================
             await updateStatus("جاري التحقق من طلب الاسم والمواليد...");
-            const nameInput = await page.waitForSelector('input[name="name"]', { timeout: 25000 }).catch(() => null);
-            if (nameInput) {
+            const nameInput = page.locator('input[name="name"]').first();
+            
+            if (await nameInput.isVisible({ timeout: 25000 }).catch(() => false)) {
                 currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 صفحة طلب الاسم مفتوحة", currentPhotoId);
                 
-                // 1. تعبئة الاسم
-                await nameInput.fill(fullName);
+                // 1. تعبئة الاسم (مع المسح أولاً تحسباً لأي نص)
+                await nameInput.click({ clickCount: 3 });
+                await page.keyboard.press('Backspace');
+                await nameInput.type(fullName, { delay: 50 });
                 await sleep(1000);
                 
-                // 2. تعبئة المواليد (اختيار 10/10/ لتجنب مشاكل الصيغ، وسنة بين 1998 و 2000)
-                const bdayInput = await page.$('input[name="birthday"], input[id*="birth" i], input[id="dateOfBirth"], input[placeholder*="birth" i]');
-                if (bdayInput) {
-                    const randomYear = [1998, 1999, 2000][Math.floor(Math.random() * 3)];
-                    const bdayStr = `10/10/${randomYear}`;
-                    await bdayInput.fill(bdayStr);
+                // 2. تعبئة المواليد (بطريقة الكتابة البشرية والمسح الإجباري)
+                const randomYear = [1998, 1999, 2000][Math.floor(Math.random() * 3)];
+                const bdayStr = `10/10/${randomYear}`;
+                
+                const bdayInput = page.locator('input[name="birthday"]').first();
+                if (await bdayInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+                    // تحديد الكل ومسح التاريخ الخاطئ (مثل 2026)
+                    await bdayInput.click({ clickCount: 3 });
+                    await page.keyboard.press('Backspace');
+                    await sleep(500);
+                    
+                    // الكتابة ببطء لتجاوز سكربتات حماية React
+                    await bdayInput.type(bdayStr, { delay: 150 });
                     await sleep(1000);
                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد: ${bdayStr}`, currentPhotoId);
                 }
 
-                // 3. الضغط على زر Finish أو Enter
-                const finishBtn = page.locator('button:has-text("Finish creating account")');
-                if (await finishBtn.isVisible().catch(() => false)) {
+                // 3. الضغط على زر Finish creating account بشكل صريح
+                const finishBtn = page.locator('button:has-text("Finish creating account")').first();
+                if (await finishBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🖱️ جاري الضغط على Finish creating account", currentPhotoId);
                     await finishBtn.click();
                 } else {
+                    // كحل بديل إذا لم يجد الزر
                     await page.keyboard.press('Enter');
                 }
 
@@ -402,7 +413,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
     return false;
 }
 
-// === أوامر البوت (تحديث الاصدار 18: أزرار تفاعلية) ===
+// === أوامر البوت ===
 
 bot.onText(/\/start/, (msg) => {
     const opts = {
@@ -422,7 +433,6 @@ bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
     const data = query.data;
 
-    // إخفاء التحميل عن الزر
     bot.answerCallbackQuery(query.id).catch(() => {});
 
     if (data === 'create_auto') {
@@ -489,4 +499,4 @@ bot.onText(/\/clearproxy/, (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
 process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection at:', promise, 'reason:', reason); });
 
-console.log("🤖 البوت يعمل الآن (الاصدار 18)...");
+console.log("🤖 البوت يعمل الآن (الاصدار 19)...");
