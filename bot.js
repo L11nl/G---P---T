@@ -1,10 +1,10 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 20
+ * ChatGPT Bot Creator - الاصدار 21
  * ==========================================================
- * - تم إصلاح حقل المواليد جذرياً باستخدام Control+A للمسح الإجباري.
- * - تم تحديد المواليد لتكون 2000/4/24 (بصيغة الموقع 04/24/2000).
- * - تعزيز النقر على زر Finish creating account.
+ * - إجبار الترتيب: ملء الاسم -> الانتظار -> مسح وتعبئة المواليد -> الانتظار -> الضغط على Finish.
+ * - استخدام طريقة المسح التكراري (Backspace/Delete) لضمان إفراغ حقل المواليد.
+ * - تحديد المواليد كـ 04/24/2000.
  * ==========================================================
  */
 
@@ -334,46 +334,56 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "⏳ جاري الانتظار بعد الضغط على Continue", currentPhotoId);
 
             // ==========================================================
-            // 📸 التحديث الأهم (الاصدار 20): مسح جذري للمواليد وتحديد 04/24/2000
+            // 📸 التحديث الأهم (الاصدار 21): إجبار التسلسل الصارم (الاسم -> المواليد -> الزر)
             // ==========================================================
             await updateStatus("جاري التحقق من طلب الاسم والمواليد...");
-            const nameInput = page.locator('input[name="name"]').first();
             
-            if (await nameInput.isVisible({ timeout: 25000 }).catch(() => false)) {
+            // ننتظر ظهور حقل الاسم أولاً للتأكد من تحميل الصفحة
+            const nameInput = page.locator('input[name="name"]').first();
+            await nameInput.waitFor({ state: 'visible', timeout: 25000 }).catch(() => null);
+            
+            if (await nameInput.isVisible()) {
                 currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 صفحة طلب الاسم مفتوحة", currentPhotoId);
                 
                 // 1. تعبئة الاسم 
                 await nameInput.click({ clickCount: 3 });
                 await page.keyboard.press('Backspace');
                 await nameInput.type(fullName, { delay: 50 });
-                await sleep(1000);
+                await sleep(1500); // استراحة
                 
-                // 2. تعبئة المواليد (بطريقة المسح الجذري باستخدام Control+A)
+                // 2. تعبئة المواليد
                 const bdayStr = '04/24/2000'; // تاريخ 2000/4/24 بصيغة الموقع
+                const bdayInput = page.locator('input[name="birthday"], input[id*="birth" i], input[placeholder*="birth" i]').first();
                 
-                const bdayInput = page.locator('input[name="birthday"]').first();
-                if (await bdayInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-                    await bdayInput.focus();
+                // انتظار الحقل حتى يصبح مرئياً
+                await bdayInput.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+                
+                if (await bdayInput.isVisible()) {
+                    await bdayInput.click();
                     await sleep(500);
                     
-                    // تحديد الكل ومسح (الطريقة الأقوى لتجاوز حماية الحقل)
-                    await page.keyboard.down('Control');
-                    await page.keyboard.press('A');
-                    await page.keyboard.up('Control');
-                    await page.keyboard.press('Backspace');
+                    // مسح متكرر لحقل المواليد (طريقة فعالة جداً لتفريغ الـ React Masks)
+                    for (let i = 0; i < 15; i++) {
+                        await page.keyboard.press('Backspace');
+                        await page.keyboard.press('Delete');
+                    }
                     await sleep(500);
                     
-                    // الكتابة التدريجية
+                    // الكتابة التدريجية للمواليد
                     await page.keyboard.type(bdayStr, { delay: 150 });
-                    await sleep(1000);
+                    await sleep(2000); // إعطاء الموقع وقتاً إضافياً لاستيعاب التاريخ
                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد بنجاح: ${bdayStr}`, currentPhotoId);
+                } else {
+                    console.log("حقل المواليد غير موجود، سنكمل...");
                 }
 
-                // 3. الضغط على زر Finish creating account بشكل صريح وقوي
+                // 3. الضغط على زر Finish creating account 
+                // نضمن أننا لن نضغط على الزر إلا بعد الانتهاء من المواليد
                 const finishBtn = page.locator('button:has-text("Finish creating account")').first();
-                if (await finishBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+                await finishBtn.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+                
+                if (await finishBtn.isVisible()) {
                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🖱️ جاري الضغط على Finish creating account", currentPhotoId);
-                    // استخدام force لتخطي أي طبقات شفافة فوق الزر
                     await finishBtn.click({ force: true });
                 } else {
                     await page.keyboard.press('Enter');
@@ -503,4 +513,4 @@ bot.onText(/\/clearproxy/, (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
 process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection at:', promise, 'reason:', reason); });
 
-console.log("🤖 البوت يعمل الآن (الاصدار 20)...");
+console.log("🤖 البوت يعمل الآن (الاصدار 21)...");
