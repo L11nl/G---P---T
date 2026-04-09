@@ -1,3 +1,7 @@
-herenode_modules/
-accounts.txt
+node_modules/
 .env
+*.txt
+*.log
+registered_accounts.txt
+.DS_Store
+screenshots/
