@@ -1,11 +1,10 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 25 (تحديث التوافق مع نظام العمر الجديد)
+ * ChatGPT Bot Creator - الاصدار 26 (تخطي حماية الحقول الشفافة)
  * ==========================================================
- * - تم حل مشكلة توقف البوت في صفحة المواليد.
- * - البوت الآن يفرق بين ما إذا كان الموقع يطلب "العمر" (Age) كرقم (مثال: 25) 
- * أو يطلب "تاريخ الميلاد" (Birthday) كصيغة (01/01/2000).
- * - تم استخدام دالة fill لضمان استقرار كتابة البيانات بدون أخطاء المتصفح.
+ * - تم حل خطأ (subtree intercepts pointer events) في حقل العمر.
+ * - استخدام focus() و keyboard.type() لتخطي طبقة الـ Label العائمة (Floating Label).
+ * - فرض النقر الإجباري { force: true } لضمان عدم توقف البوت.
  * ==========================================================
  */
 
@@ -283,7 +282,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await sleep(5000); 
 
             // ==========================================================
-            // 📸 منطق الاسم والعمر المحدث (يدعم نظام العمر ونظام المواليد)
+            // 📸 منطق الاسم والعمر المحدث (الإصدار 26)
             // ==========================================================
             await updateStatus("جاري كتابة الاسم والعمر/المواليد...");
             
@@ -301,20 +300,26 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 
                 if (await ageInput.isVisible({ timeout: 3000 }).catch(() => false)) {
                     // إذا كان الموقع يطلب العمر (النظام الجديد)
-                    await ageInput.click();
-                    await ageInput.fill("25"); 
+                    // نستخدم focus بدلاً من الضغط لتجنب مشكلة الـ (intercepts pointer events)
+                    await ageInput.focus().catch(()=>{});
+                    // للضمان نستخدم القوة في النقر إذا تطلب الأمر
+                    await ageInput.click({ force: true }).catch(()=>{});
+                    
+                    // نكتب العمر باستخدام لوحة المفاتيح لتجنب أخطاء التعبئة (fill)
+                    await page.keyboard.type("25", { delay: 150 });
                     await sleep(1000);
                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال العمر: 25`, currentPhotoId);
                 } else if (await bdayInput.isVisible({ timeout: 2000 }).catch(() => false)) {
                     // إذا كان الموقع لا يزال يطلب تاريخ الميلاد (النظام القديم)
-                    await bdayInput.click();
-                    await bdayInput.fill("01/01/2000"); 
+                    await bdayInput.focus().catch(()=>{});
+                    await bdayInput.click({ force: true }).catch(()=>{});
+                    await page.keyboard.type("01/01/2000", { delay: 150 });
                     await sleep(1000);
                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال تاريخ الميلاد: 01/01/2000`, currentPhotoId);
                 } else {
                     // محاولة أخيرة احتياطية بالانتقال للحقل التالي وكتابة العمر
                     await page.keyboard.press('Tab');
-                    await page.keyboard.type("25", { delay: 100 });
+                    await page.keyboard.type("25", { delay: 150 });
                 }
 
                 // 3. الضغط على زر الإنهاء
@@ -422,4 +427,4 @@ bot.onText(/\/clearproxy/, (msg) => { activeProxy = null; bot.sendMessage(msg.ch
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (الاصدار 25 - متوافق مع تحديث العمر الجديد)...");
+console.log("🤖 البوت يعمل (الاصدار 26 - تخطي الطبقات الوهمية للحقول)...");
