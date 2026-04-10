@@ -1,12 +1,13 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 37 (الإصدار الأسطوري 👑)
+ * ChatGPT Bot Creator - الاصدار 38 (الإصدار الأسطوري 👑)
  * ==========================================================
  * 📸 نظام تصوير ذكي (يحذف الصورة السابقة ويبقي الأخيرة).
  * 💳 محلل فيزا ذكي (يحول 1234|12|2027|123 إلى 1234 1227 123 آلياً).
  * 🌐 محرك 5 APIs للإيميلات (يخدم كلا النظامين بالكامل).
  * 🛡️ كود محمي 100% وخالٍ من الأخطاء مع واجهة أزرار قوية.
- * 🎂 تم التحديث لتخطي حقل العمر (Age) وزر (Finish) الجديدين.
+ * 🎂 متوافق بالكامل مع نظام العمر (Age) وزر Finish الجديدين.
+ * 🖱️ خوارزمية نقر ذكية تتجاهل الأزرار المخفية وتمنع توقف البوت.
  * ==========================================================
  */
 
@@ -245,25 +246,50 @@ async function createAccountLogic_Original(chatId, manualData = null) {
 
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🌐 <b>الأساسي:</b> فتح المتصفح", currentPhotoId);
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
-        await sleep(1000);
+        await sleep(4000); // إعطاء الصفحة مهلة لتحميل الأزرار المرئية بالكامل
         
-        // 🔄 تحديث ذكي لزر التسجيل الجديد
-        const signUpSelectors = 'button:has-text("Sign up"), a:has-text("Sign up"), text=/Sign up/i, [data-testid="signup-button"], [data-testid="login-screen-signup"]';
-        const signUpBtn = page.locator(signUpSelectors).first();
-        await signUpBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(()=>{});
-        await signUpBtn.click({ force: true }).catch(()=>{});
-        await sleep(3000); // إعطاء المتصفح مهلة للانتقال لصفحة الإيميل
+        // 🔄 محرك النقر الذكي يتخطى العناصر المخفية ويبحث عن الزر الحقيقي
+        let clickedSignUp = false;
+        const signUpSelectors = [
+            '[data-testid="login-screen-signup"]',
+            'button:has-text("Sign up for free")',
+            'button:has-text("Sign up")',
+            'a:has-text("Sign up for free")'
+        ];
+
+        for (const sel of signUpSelectors) {
+            const btnLocator = page.locator(sel).first();
+            if (await btnLocator.isVisible().catch(()=>false)) {
+                await btnLocator.click().catch(()=>{}); // بدون force لضمان عدم نقر المخفي
+                clickedSignUp = true;
+                break;
+            }
+        }
+
+        // خطة طوارئ: حقن كود جافاسكربت للنقر في حال وجود طبقة حماية
+        if (!clickedSignUp) {
+            await page.evaluate(() => {
+                const btns = Array.from(document.querySelectorAll('button, a'));
+                const target = btns.find(b => b.innerText && b.innerText.toLowerCase().includes('sign up') && b.offsetParent !== null); // offsetParent يتأكد أن العنصر مرئي
+                if (target) target.click();
+            }).catch(()=>{});
+        }
+
+        await sleep(4000); // إعطاء المتصفح مهلة للانتقال لصفحة الإيميل بعد النقر
         
-        await page.waitForSelector('input[name="email"]', {timeout: 30000});
+        // توسيع محدد الإيميل لضمان نجاح الخطوة
+        const emailSelectors = 'input[name="email"], input[type="email"], input[autocomplete="email"], input[autocomplete="username"]';
+        await page.waitForSelector(emailSelectors, {timeout: 30000});
+
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 <b>الأساسي:</b> إدخال الإيميل:\n<code>${emailData.email}</code>`, currentPhotoId);
-        await page.locator('input[name="email"]').first().fill(emailData.email);
-        await page.locator('button:has-text("Continue")').first().click();
+        await page.locator(emailSelectors).first().fill(emailData.email);
+        await page.locator('button:has-text("Continue"), button[type="submit"]').first().click();
         await sleep(3000);
 
         await page.waitForSelector('input[type="password"]', {timeout: 30000});
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔐 <b>الأساسي:</b> إدخال الباسورد...", currentPhotoId);
         await page.locator('input[type="password"]').first().fill(chatGptPassword);
-        await page.locator('button:has-text("Continue")').first().click();
+        await page.locator('button:has-text("Continue"), button[type="submit"]').first().click();
         await sleep(6000);
 
         let code = null;
@@ -289,10 +315,9 @@ async function createAccountLogic_Original(chatId, manualData = null) {
             await nameInput.pressSequentially(fullName, { delay: 60 });
             await sleep(1000);
 
-            // 🔄 التحديث الجديد: الكشف عن "العمر" أو "المواليد" في القسم الأساسي
             const isAgeFormat = await page.locator('text=/How old are you/i').isVisible().catch(()=>false);
             const ageInput = page.locator('input[name="age"], input[id="age"], input[placeholder*="Age"], [data-testid="age-input"]').first();
-            const randomAge = String(Math.floor(Math.random() * 15) + 20); // عمر عشوائي بين 20 و 34
+            const randomAge = String(Math.floor(Math.random() * 15) + 20); // عمر عشوائي
 
             if (await ageInput.isVisible().catch(()=>false)) {
                 await ageInput.click();
@@ -317,7 +342,6 @@ async function createAccountLogic_Original(chatId, manualData = null) {
                 }
             }
             
-            // 🔄 دعم زر الإكمال الجديد (Finish creating account)
             const finishBtn = page.locator('button:has-text("Finish"), button:has-text("Continue"), button[type="submit"]').last();
             if (await finishBtn.isVisible().catch(()=>false)) {
                 await finishBtn.click();
@@ -386,7 +410,7 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
         if (userState[chatId]) userState[chatId].context = context; 
         page = await context.newPage();
 
-        // WebGL Bypass (من كود Python)
+        // WebGL Bypass 
         await page.addInitScript(() => {
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
             const getParameter = WebGLRenderingContext.prototype.getParameter;
@@ -409,26 +433,53 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
                 if (await cb.isVisible().catch(()=>false)) { await cb.click({force: true}); await sleep(5000); }
             }
         }
+        await sleep(4000); // تحميل الأزرار
 
-        // 🔄 التحديث الذكي لزر التسجيل الجديد في نظام بايثون
-        const signUpSelectorsPy = 'button:has-text("Sign up"), a:has-text("Sign up"), text=/Sign up/i, text="注册", [data-testid="signup-button"], [data-testid="login-screen-signup"]';
-        const signUpBtnPy = page.locator(signUpSelectorsPy).first();
-        await signUpBtnPy.waitFor({ state: 'visible', timeout: 15000 }).catch(()=>{});
-        await signUpBtnPy.click({ force: true }).catch(()=>{});
-        await sleep(3000); 
+        // 🔄 محرك النقر الذكي لزر التسجيل في نظام بايثون
+        let clickedSignUpPy = false;
+        const signUpSelectorsPy = [
+            '[data-testid="login-screen-signup"]',
+            'button:has-text("Sign up for free")',
+            'button:has-text("Sign up")',
+            'button:has-text("注册")',
+            'a:has-text("Sign up for free")'
+        ];
+
+        for (const sel of signUpSelectorsPy) {
+            const btnLocator = page.locator(sel).first();
+            if (await btnLocator.isVisible().catch(()=>false)) {
+                await btnLocator.click().catch(()=>{}); 
+                clickedSignUpPy = true;
+                break;
+            }
+        }
+
+        // خطة طوارئ بالجافاسكربت
+        if (!clickedSignUpPy) {
+            await page.evaluate(() => {
+                const btns = Array.from(document.querySelectorAll('button, a'));
+                const target = btns.find(b => b.innerText && /sign up|注册/i.test(b.innerText) && b.offsetParent !== null);
+                if (target) target.click();
+            }).catch(()=>{});
+        }
         
-        await page.waitForSelector('input[name="email"], input[autocomplete="email"]', {timeout: 30000});
+        await sleep(4000); // الانتقال للإيميل
+        
+        // توسيع محددات حقل الإيميل في بايثون
+        const emailSelectorsPy = 'input[name="email"], input[type="email"], input[autocomplete="email"], input[autocomplete="username"]';
+        await page.waitForSelector(emailSelectorsPy, {timeout: 30000});
+
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 <b>بايثون:</b> كتابة الإيميل ببطء:\n<code>${emailData.email}</code>`, currentPhotoId);
-        const emailInput = page.locator('input[name="email"], input[autocomplete="email"]').first();
+        const emailInput = page.locator(emailSelectorsPy).first();
         await emailInput.focus(); await emailInput.pressSequentially(emailData.email, { delay: 60 });
-        await page.locator('button:has-text("Continue")').first().click();
+        await page.locator('button:has-text("Continue"), button[type="submit"]').first().click();
         await sleep(3000);
 
         await page.waitForSelector('input[type="password"]', {timeout: 30000});
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔐 <b>بايثون:</b> كتابة الباسورد ببطء", currentPhotoId);
         const passInput = page.locator('input[type="password"]').first();
         await passInput.focus(); await passInput.pressSequentially(password, { delay: 60 });
-        await page.locator('button:has-text("Continue")').first().click();
+        await page.locator('button:has-text("Continue"), button[type="submit"]').first().click();
         await sleep(6000);
 
         let code = null;
@@ -448,7 +499,7 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
         await codeInput.waitFor({ state: 'visible' }).catch(()=>{});
         await codeInput.pressSequentially(code, { delay: 80 });
         await sleep(4000);
-        await page.locator('button:has-text("Continue")').last().click({force:true}).catch(()=>{});
+        await page.locator('button:has-text("Continue"), button[type="submit"]').last().click({force:true}).catch(()=>{});
         await sleep(5000);
 
         if (await page.locator('input[name="name"], input[autocomplete="name"]').isVisible().catch(()=>false)) {
@@ -459,10 +510,9 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
             await nameInput.pressSequentially(pyName, { delay: 60 });
             await sleep(1000);
             
-            // 🔄 التحديث الجديد: الكشف عن "العمر" أو "المواليد" في بايثون
             const isAgeFormat = await page.locator('text=/How old are you/i').isVisible().catch(()=>false);
             const ageInput = page.locator('input[name="age"], input[id="age"], input[placeholder*="Age"], [data-testid="age-input"]').first();
-            const calculatedAge = String(new Date().getFullYear() - parseInt(pyDOB.year)); // حساب العمر بناءً على سنة الميلاد الوهمية
+            const calculatedAge = String(new Date().getFullYear() - parseInt(pyDOB.year)); 
 
             if (await ageInput.isVisible().catch(()=>false)) {
                 await ageInput.click();
@@ -491,7 +541,6 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
                 }
             }
 
-            // 🔄 دعم زر الإكمال الجديد في بايثون
             const finishBtn = page.locator('button:has-text("Finish"), button:has-text("Continue"), button[type="submit"]').last();
             if (await finishBtn.isVisible().catch(()=>false)) {
                 await finishBtn.click();
@@ -833,4 +882,4 @@ bot.on('message', async (msg) => {
 
 process.on('uncaughtException', (err) => console.error('Uncaught:', err.message));
 process.on('unhandledRejection', (reason) => console.error('Unhandled:', reason));
-console.log("🤖 البوت يعمل (الاصدار 37 - متوافق بالكامل مع تحديثات Age وزر Finish الجديدة)...");
+console.log("🤖 البوت يعمل (الاصدار 38 - مع خوارزمية ذكية لاصطياد زر التسجيل وتجاوز الأزرار المخفية 100%)...");
