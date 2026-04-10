@@ -4,7 +4,7 @@
  * ==========================================================
  * - تم تحويل استراتيجية المواليد من كود Python الأصلي إلى JS.
  * - البوت يبحث عن حقل (spinbutton) الخاص بالشهر ويضغط عليه.
- * - يكتب الأرقام متصلة (01012000) لتعني 2000/1/1 ليوزعها الموقع تلقائياً.
+ * - يكتب الأرقام بصيغة (01.04.2000) لضمان قبولها من الموقع.
  * - تم دمج Mail.tm والأزرار اليدوية/التلقائية بنجاح.
  * ==========================================================
  */
@@ -140,7 +140,7 @@ async function simulateHumanActivityFast(page) {
 }
 
 // ============================================================
-// الدالة الرئيسية (مع التعديل على منطق كتابة المواليد)
+// الدالة الرئيسية (مع تعديل صيغة المواليد)
 // ============================================================
 async function createAccountLogic(chatId, currentNum, total, manualData = null) {
     const isManual = !!manualData;
@@ -279,7 +279,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await sleep(5000); 
 
             // ==========================================================
-            // 📸 التعديل هنا: منطق كتابة الاسم والمواليد (01012000)
+            // التعديل هنا: استخدام صيغة 01.04.2000
             // ==========================================================
             await updateStatus("جاري كتابة الاسم والمواليد...");
             
@@ -291,30 +291,26 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 await nameInputNode.fill(fullName);
                 await sleep(1000);
                 
-                const birthdayString = "01012000"; // التاريخ المطلوب
+                const birthdayString = "01.04.2000"; // التعديل المطلوب لضمان القبول
                 
-                // البحث عن حقول المواليد (نحاول الضغط على أول حقل أرقام يظهر)
                 const spinButtons = page.locator('[role="spinbutton"]');
                 const count = await spinButtons.count();
 
                 if (count > 0) {
-                    await updateStatus(`تم العثور على حقول المواليد، جاري الكتابة...`);
-                    // نضغط على أول حقل (عادة يكون الشهر)
+                    await updateStatus(`جاري كتابة المواليد: ${birthdayString}`);
                     await spinButtons.first().click();
                     await sleep(500);
-                    // نكتب التاريخ كاملاً متصلاً
-                    await page.keyboard.type(birthdayString, { delay: 150 });
+                    // نستخدم Type ببطء لضمان توزيع الأرقام مع النقاط
+                    await page.keyboard.type(birthdayString, { delay: 200 });
                     await sleep(1500);
                     
                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد: ${birthdayString}`, currentPhotoId);
                 } else {
-                    // محاولة بديلة عبر الـ placeholder
-                    await page.keyboard.press('Tab'); // الانتقال من الاسم للمواليد
+                    await page.keyboard.press('Tab'); 
                     await sleep(500);
-                    await page.keyboard.type(birthdayString, { delay: 150 });
+                    await page.keyboard.type(birthdayString, { delay: 200 });
                 }
 
-                // الضغط على زر الإنهاء
                 const finishBtn = page.locator('button:has-text("Finish creating account"), button:has-text("Continue"), button:has-text("Agree")').last();
                 if (await finishBtn.isVisible().catch(() => false)) {
                     await finishBtn.click({ force: true });
@@ -358,7 +354,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
     return false;
 }
 
-// === بقية أوامر البوت كما هي دون تغيير ===
+// === أوامر البوت ===
 
 bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id, "👋 أهلاً بك! اختر طريقة الإنشاء:", {
@@ -413,4 +409,4 @@ bot.onText(/\/clearproxy/, (msg) => { activeProxy = null; bot.sendMessage(msg.ch
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (الاصدار 24 - تم إصلاح كتابة المواليد)...");
+console.log("🤖 البوت يعمل (الاصدار 24 - تم تعديل صيغة المواليد)...");
