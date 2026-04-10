@@ -1,11 +1,12 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 36 (الإصدار الأسطوري 👑)
+ * ChatGPT Bot Creator - الاصدار 37 (الإصدار الأسطوري 👑)
  * ==========================================================
  * 📸 نظام تصوير ذكي (يحذف الصورة السابقة ويبقي الأخيرة).
  * 💳 محلل فيزا ذكي (يحول 1234|12|2027|123 إلى 1234 1227 123 آلياً).
  * 🌐 محرك 5 APIs للإيميلات (يخدم كلا النظامين بالكامل).
  * 🛡️ كود محمي 100% وخالٍ من الأخطاء مع واجهة أزرار قوية.
+ * 🎂 تم التحديث لتخطي حقل العمر (Age) وزر (Finish) الجديدين.
  * ==========================================================
  */
 
@@ -280,16 +281,49 @@ async function createAccountLogic_Original(chatId, manualData = null) {
         await page.getByRole("textbox", { name: "Code" }).fill(code).catch(()=> page.keyboard.type(code));
         await sleep(4000);
 
-        if (await page.locator('input[name="name"]').isVisible().catch(()=>false)) {
-            currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 <b>الأساسي:</b> تعبئة الاسم والمواليد...", currentPhotoId);
-            await page.locator('input[name="name"]').fill(fullName);
-            const bdayInput = page.locator('input[name="birthday"]').first();
-            if (await bdayInput.isVisible().catch(()=>false)) {
-                await bdayInput.click(); await page.keyboard.type("01012000", { delay: 100 });
+        if (await page.locator('input[name="name"], input[autocomplete="name"]').isVisible().catch(()=>false)) {
+            currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 <b>الأساسي:</b> تعبئة الاسم والعمر...", currentPhotoId);
+            
+            const nameInput = page.locator('input[name="name"], input[autocomplete="name"]').first();
+            await nameInput.fill('');
+            await nameInput.pressSequentially(fullName, { delay: 60 });
+            await sleep(1000);
+
+            // 🔄 التحديث الجديد: الكشف عن "العمر" أو "المواليد" في القسم الأساسي
+            const isAgeFormat = await page.locator('text=/How old are you/i').isVisible().catch(()=>false);
+            const ageInput = page.locator('input[name="age"], input[id="age"], input[placeholder*="Age"], [data-testid="age-input"]').first();
+            const randomAge = String(Math.floor(Math.random() * 15) + 20); // عمر عشوائي بين 20 و 34
+
+            if (await ageInput.isVisible().catch(()=>false)) {
+                await ageInput.click();
+                await page.keyboard.press('Control+A');
+                await ageInput.pressSequentially(randomAge, { delay: 60 });
+            } else if (isAgeFormat) {
+                await nameInput.focus();
+                await page.keyboard.press('Tab');
+                await page.keyboard.press('Control+A');
+                await page.keyboard.press('Backspace');
+                await page.keyboard.type(randomAge, { delay: 60 });
             } else {
-                await page.keyboard.press('Tab'); await page.keyboard.type("01012000", { delay: 100 });
+                const bdayInput = page.locator('input[name="birthday"]').first();
+                if (await bdayInput.isVisible().catch(()=>false)) {
+                    await bdayInput.click(); await page.keyboard.press('Control+A'); await page.keyboard.type("01012000", { delay: 100 });
+                } else {
+                    await nameInput.focus();
+                    await page.keyboard.press('Tab'); 
+                    await page.keyboard.press('Control+A');
+                    await page.keyboard.press('Backspace');
+                    await page.keyboard.type("01012000", { delay: 100 });
+                }
             }
-            await page.locator('button:has-text("Continue")').last().click().catch(()=>page.keyboard.press('Enter'));
+            
+            // 🔄 دعم زر الإكمال الجديد (Finish creating account)
+            const finishBtn = page.locator('button:has-text("Finish"), button:has-text("Continue"), button[type="submit"]').last();
+            if (await finishBtn.isVisible().catch(()=>false)) {
+                await finishBtn.click();
+            } else {
+                await page.keyboard.press('Enter');
+            }
             await sleep(8000);
         }
 
@@ -381,7 +415,7 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
         const signUpBtnPy = page.locator(signUpSelectorsPy).first();
         await signUpBtnPy.waitFor({ state: 'visible', timeout: 15000 }).catch(()=>{});
         await signUpBtnPy.click({ force: true }).catch(()=>{});
-        await sleep(3000); // إعطاء المتصفح مهلة للانتقال لصفحة الإيميل
+        await sleep(3000); 
         
         await page.waitForSelector('input[name="email"], input[autocomplete="email"]', {timeout: 30000});
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 <b>بايثون:</b> كتابة الإيميل ببطء:\n<code>${emailData.email}</code>`, currentPhotoId);
@@ -418,21 +452,52 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
         await sleep(5000);
 
         if (await page.locator('input[name="name"], input[autocomplete="name"]').isVisible().catch(()=>false)) {
-            currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 <b>بايثون:</b> تعبئة نظام المواليد الجديد (data-type)", currentPhotoId);
-            await page.locator('input[name="name"], input[autocomplete="name"]').first().fill(pyName);
+            currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 <b>بايثون:</b> تعبئة الاسم والعمر (التحديث الجديد)", currentPhotoId);
+            
+            const nameInput = page.locator('input[name="name"], input[autocomplete="name"]').first();
+            await nameInput.fill('');
+            await nameInput.pressSequentially(pyName, { delay: 60 });
             await sleep(1000);
             
-            const yearInput = page.locator('[data-type="year"]').first();
-            if (await yearInput.isVisible().catch(()=>false)) {
-                await yearInput.click(); await page.keyboard.press('Control+A'); await yearInput.pressSequentially(pyDOB.year, {delay: 60});
-                const monthInput = page.locator('[data-type="month"]').first();
-                await monthInput.click(); await page.keyboard.press('Control+A'); await monthInput.pressSequentially(pyDOB.month, {delay: 60});
-                const dayInput = page.locator('[data-type="day"]').first();
-                await dayInput.click(); await page.keyboard.press('Control+A'); await dayInput.pressSequentially(pyDOB.day, {delay: 60});
+            // 🔄 التحديث الجديد: الكشف عن "العمر" أو "المواليد" في بايثون
+            const isAgeFormat = await page.locator('text=/How old are you/i').isVisible().catch(()=>false);
+            const ageInput = page.locator('input[name="age"], input[id="age"], input[placeholder*="Age"], [data-testid="age-input"]').first();
+            const calculatedAge = String(new Date().getFullYear() - parseInt(pyDOB.year)); // حساب العمر بناءً على سنة الميلاد الوهمية
+
+            if (await ageInput.isVisible().catch(()=>false)) {
+                await ageInput.click();
+                await page.keyboard.press('Control+A');
+                await ageInput.pressSequentially(calculatedAge, { delay: 60 });
+            } else if (isAgeFormat) {
+                await nameInput.focus();
+                await page.keyboard.press('Tab');
+                await page.keyboard.press('Control+A');
+                await page.keyboard.press('Backspace');
+                await page.keyboard.type(calculatedAge, { delay: 60 });
             } else {
-                await page.keyboard.press('Tab'); await page.keyboard.type(`${pyDOB.month}${pyDOB.day}${pyDOB.year}`, { delay: 60 });
+                const yearInput = page.locator('[data-type="year"]').first();
+                if (await yearInput.isVisible().catch(()=>false)) {
+                    await yearInput.click(); await page.keyboard.press('Control+A'); await yearInput.pressSequentially(pyDOB.year, {delay: 60});
+                    const monthInput = page.locator('[data-type="month"]').first();
+                    await monthInput.click(); await page.keyboard.press('Control+A'); await monthInput.pressSequentially(pyDOB.month, {delay: 60});
+                    const dayInput = page.locator('[data-type="day"]').first();
+                    await dayInput.click(); await page.keyboard.press('Control+A'); await dayInput.pressSequentially(pyDOB.day, {delay: 60});
+                } else {
+                    await nameInput.focus();
+                    await page.keyboard.press('Tab');
+                    await page.keyboard.press('Control+A');
+                    await page.keyboard.press('Backspace');
+                    await page.keyboard.type(`${pyDOB.month}${pyDOB.day}${pyDOB.year}`, { delay: 60 });
+                }
             }
-            await page.locator('button[type="submit"]').last().click().catch(()=>page.keyboard.press('Enter'));
+
+            // 🔄 دعم زر الإكمال الجديد في بايثون
+            const finishBtn = page.locator('button:has-text("Finish"), button:has-text("Continue"), button[type="submit"]').last();
+            if (await finishBtn.isVisible().catch(()=>false)) {
+                await finishBtn.click();
+            } else {
+                await page.keyboard.press('Enter');
+            }
             await sleep(8000);
         }
 
@@ -768,4 +833,4 @@ bot.on('message', async (msg) => {
 
 process.on('uncaughtException', (err) => console.error('Uncaught:', err.message));
 process.on('unhandledRejection', (reason) => console.error('Unhandled:', reason));
-console.log("🤖 البوت يعمل (الاصدار 36 - الأسطورة المطلقة، صور ديناميكية، 5 APIs، وفيزا Auto-Format)...");
+console.log("🤖 البوت يعمل (الاصدار 37 - متوافق بالكامل مع تحديثات Age وزر Finish الجديدة)...");
