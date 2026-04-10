@@ -4,7 +4,7 @@
  * ==========================================================
  * - تم تحويل استراتيجية المواليد من كود Python الأصلي إلى JS.
  * - البوت يبحث عن حقل (spinbutton) الخاص بالشهر ويضغط عليه.
- * - يكتب الأرقام بصيغة (01.04.2000) لضمان قبولها من الموقع.
+ * - يكتب الأرقام بالتسلسل (01 ثم 01 ثم 2000) لضمان القبول.
  * - تم دمج Mail.tm والأزرار اليدوية/التلقائية بنجاح.
  * ==========================================================
  */
@@ -140,7 +140,7 @@ async function simulateHumanActivityFast(page) {
 }
 
 // ============================================================
-// الدالة الرئيسية (مع تعديل صيغة المواليد)
+// الدالة الرئيسية (مع التعديل المطلوب للمواليد)
 // ============================================================
 async function createAccountLogic(chatId, currentNum, total, manualData = null) {
     const isManual = !!manualData;
@@ -279,7 +279,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await sleep(5000); 
 
             // ==========================================================
-            // التعديل هنا: استخدام صيغة 01.04.2000
+            // التعديل: كتابة المواليد بالتسلسل (يوم، شهر، سنة)
             // ==========================================================
             await updateStatus("جاري كتابة الاسم والمواليد...");
             
@@ -291,24 +291,34 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 await nameInputNode.fill(fullName);
                 await sleep(1000);
                 
-                const birthdayString = "01.04.2000"; // التعديل المطلوب لضمان القبول
-                
                 const spinButtons = page.locator('[role="spinbutton"]');
-                const count = await spinButtons.count();
-
-                if (count > 0) {
-                    await updateStatus(`جاري كتابة المواليد: ${birthdayString}`);
+                if (await spinButtons.count() > 0) {
                     await spinButtons.first().click();
                     await sleep(500);
-                    // نستخدم Type ببطء لضمان توزيع الأرقام مع النقاط
-                    await page.keyboard.type(birthdayString, { delay: 200 });
-                    await sleep(1500);
+
+                    // الخيار الأول: التسلسل 01 -> 01 -> 2000
+                    await page.keyboard.type("01", { delay: 200 });
+                    await sleep(300);
+                    await page.keyboard.type("01", { delay: 200 });
+                    await sleep(300);
+                    await page.keyboard.type("2000", { delay: 200 });
+                    await sleep(1000);
+
+                    // التحقق من النجاح (إذا ظل الحقل أحمر أو فارغ نستخدم الفواصل)
+                    const isError = await page.isVisible('text="Enter a valid age"').catch(()=>false);
+                    if (isError) {
+                        await updateStatus("محاولة الكتابة بالفواصل...");
+                        await spinButtons.first().click();
+                        await page.keyboard.press('Control+A');
+                        await page.keyboard.press('Backspace');
+                        await page.keyboard.type("01/01/2000", { delay: 150 });
+                    }
                     
-                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد: ${birthdayString}`, currentPhotoId);
+                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🎂 تم إدخال المواليد بالتسلسل", currentPhotoId);
                 } else {
                     await page.keyboard.press('Tab'); 
                     await sleep(500);
-                    await page.keyboard.type(birthdayString, { delay: 200 });
+                    await page.keyboard.type("01012000", { delay: 200 });
                 }
 
                 const finishBtn = page.locator('button:has-text("Finish creating account"), button:has-text("Continue"), button:has-text("Agree")').last();
@@ -354,7 +364,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
     return false;
 }
 
-// === أوامر البوت ===
+// === أوامر البوت المتبقية كما هي ===
 
 bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id, "👋 أهلاً بك! اختر طريقة الإنشاء:", {
@@ -409,4 +419,4 @@ bot.onText(/\/clearproxy/, (msg) => { activeProxy = null; bot.sendMessage(msg.ch
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (الاصدار 24 - تم تعديل صيغة المواليد)...");
+console.log("🤖 البوت يعمل (الاصدار 24 - تعديل المواليد بالتسلسل)...");
