@@ -4,7 +4,7 @@
  * ==========================================================
  * - تم تحويل استراتيجية المواليد من كود Python الأصلي إلى JS.
  * - البوت يبحث عن حقل (spinbutton) الخاص بالشهر ويضغط عليه.
- * - يكتب الأرقام متصلة (01012000) ليقوم الموقع بتوزيعها تلقائياً.
+ * - يكتب الأرقام متصلة (04242000) لتعني 2000/4/24 ليوزعها الموقع تلقائياً.
  * - تم دمج Mail.tm والأزرار اليدوية/التلقائية بنجاح.
  * ==========================================================
  */
@@ -140,7 +140,7 @@ async function simulateHumanActivityFast(page) {
 }
 
 // ============================================================
-// الدالة الرئيسية (مع دمج فكرة كتابة المواليد من كود البايثون)
+// الدالة الرئيسية (مع دمج منطق الـ Python)
 // ============================================================
 async function createAccountLogic(chatId, currentNum, total, manualData = null) {
     const isManual = !!manualData;
@@ -201,31 +201,37 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
 
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🌐 فتح المتصفح", currentPhotoId);
 
+            // الذهاب لموقع ChatGPT
             await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
             await simulateHumanActivityFast(page);
 
+            // الضغط على زر Sign up (بمحاكاة كود البايثون)
             const signupBtn = page.getByRole("button", { name: "Sign up" });
             await signupBtn.waitFor({ state: 'visible', timeout: 30000 }).catch(async () => {
                 await page.locator('button:has-text("Sign up")').click();
             });
             await signupBtn.click();
             
+            // إدخال الإيميل
             await page.waitForSelector('input[name="email"], input[id="email-input"]', {timeout: 30000});
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 إدخال الإيميل: ${email}`, currentPhotoId);
             const emailInput = page.locator('input[name="email"], input[id="email-input"]').first();
             await emailInput.fill(email);
             await sleep(1000);
             
+            // زر Continue بعد الإيميل
             const continueBtn1 = page.getByRole("button", { name: "Continue", exact: true });
             await continueBtn1.click({ force: true });
             await sleep(3000);
 
+            // إدخال الباسورد
             await page.waitForSelector('input[type="password"]', {timeout: 30000});
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔐 إدخال كلمة المرور", currentPhotoId);
             const passInput = page.locator('input[type="password"]').first();
             await passInput.fill(chatGptPassword);
             await sleep(1000);
 
+            // زر Continue بعد الباسورد
             const continueBtn2 = page.getByRole("button", { name: "Continue" });
             await continueBtn2.click({ force: true });
             
@@ -260,6 +266,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 if (!code) throw new Error("فشل جلب الكود التلقائي.");
             }
 
+            // إدخال الكود
             await updateStatus(`إدخال الكود: ${code}`);
             const codeInput = page.getByRole("textbox", { name: "Code" });
             await codeInput.waitFor({ state: 'visible', timeout: 15000 }).catch(async () => {
@@ -270,6 +277,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             }
             await sleep(2000);
 
+            // زر Continue بعد الكود (مهم جداً)
             const continueBtnAfterCode = page.getByRole("button", { name: "Continue" }).last();
             if (await continueBtnAfterCode.isVisible().catch(()=>false)) {
                 await continueBtnAfterCode.click({ force: true });
@@ -279,45 +287,56 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await sleep(5000); 
 
             // ==========================================================
-            // التعديل: تطبيق فكرة البايثون (كتابة 01012000 في spinbutton)
+            // 📸 منطق البايثون للاسم والمواليد (تم التعديل للصيغة المطلوبة)
             // ==========================================================
             await updateStatus("جاري كتابة الاسم والمواليد...");
             
+            // 1. الاسم
             const nameInputNode = page.getByRole("textbox", { name: "Full name" }).first();
             if (await nameInputNode.isVisible({ timeout: 15000 }).catch(() => false)) {
                 currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 صفحة طلب الاسم مفتوحة", currentPhotoId);
                 
-                await nameInputNode.click();
                 await nameInputNode.fill(fullName);
                 await sleep(1000);
                 
-                const birthdayString = "01012000"; 
+                // 2. المواليد (تم التعديل لإضافة الشرطات المائلة /)
+                const birthdayString = "01/01/2000"; 
                 
-                const monthSpin = page.locator('[role="spinbutton"][aria-label*="month"]').first();
+                // البحث عن حقل المواليد
+                const monthSpin = page.locator('[role="spinbutton"][aria-label*="month" i], input[aria-label*="birthday" i], input[name="birthday"]').first();
+                
                 if (await monthSpin.isVisible({ timeout: 5000 }).catch(() => false)) {
                     await monthSpin.click();
                     await sleep(500);
-                    // كتابة الأرقام دفعة واحدة كما في كود البايثون
-                    await page.keyboard.type(birthdayString, { delay: 100 });
+                    
+                    // كتابة التاريخ بالصيغة المطلوبة
+                    await page.keyboard.type(birthdayString, { delay: 150 });
                     await sleep(1500);
                     
-                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد بفكرة البايثون: ${birthdayString}`, currentPhotoId);
+                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد بالصيغة الجديدة: ${birthdayString}`, currentPhotoId);
                 } else {
-                    await page.keyboard.press('Tab'); 
-                    await sleep(500);
+                    // محاولة أخيرة في حال اختلف شكل الحقل
+                    await page.keyboard.press('Tab');
                     await page.keyboard.type(birthdayString, { delay: 100 });
                 }
 
-                const finishBtn = page.locator('button:has-text("Finish creating account"), button:has-text("Continue"), button:has-text("Agree")').last();
+                // 3. الضغط على زر الإنهاء
+                const finishBtn = page.getByRole("button", { name: "Continue" }).last();
                 if (await finishBtn.isVisible().catch(() => false)) {
                     await finishBtn.click({ force: true });
                 } else {
-                    await page.keyboard.press('Enter');
+                    const altFinishBtn = page.locator('button:has-text("Finish creating account"), button:has-text("Agree")').last();
+                    if (await altFinishBtn.isVisible().catch(()=>false)) {
+                        await altFinishBtn.click({ force: true });
+                    } else {
+                        await page.keyboard.press('Enter');
+                    }
                 }
                 
                 await sleep(8000); 
             }
 
+            // التحقق من النجاح
             await updateStatus("في انتظار الصفحة الرئيسية...");
             await page.waitForURL('**/chat', {timeout: 30000}).catch(()=>{});
             
@@ -406,4 +425,4 @@ bot.onText(/\/clearproxy/, (msg) => { activeProxy = null; bot.sendMessage(msg.ch
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (الاصدار 24 - تم تطبيق فكرة البايثون)...");
+console.log("🤖 البوت يعمل (الاصدار 24 - كود البايثون المدمج)...");
