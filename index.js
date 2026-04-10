@@ -246,15 +246,17 @@ async function createAccountLogic_Original(chatId, manualData = null) {
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
         await sleep(1000);
         
-        await page.locator('button:has-text("Sign up")').first().click().catch(()=>{});
-        
-        await page.waitForSelector('input[name="email"]', {timeout: 30000});
+        // ✅ إصلاح: دعم النصوص الجديدة للزر (Sign up / Sign up for free / Get started)
+        await page.locator('button:has-text("Sign up for free"), button:has-text("Sign up"), a:has-text("Sign up")').first().click().catch(()=>{});
+        await sleep(3000);
+
+        await page.waitForSelector('input[name="email"], input[autocomplete="email"]', {timeout: 60000});
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 <b>الأساسي:</b> إدخال الإيميل:\n<code>${emailData.email}</code>`, currentPhotoId);
         await page.locator('input[name="email"]').first().fill(emailData.email);
         await page.locator('button:has-text("Continue")').first().click();
         await sleep(3000);
 
-        await page.waitForSelector('input[type="password"]', {timeout: 30000});
+        await page.waitForSelector('input[type="password"]', {timeout: 60000});
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔐 <b>الأساسي:</b> إدخال الباسورد...", currentPhotoId);
         await page.locator('input[type="password"]').first().fill(chatGptPassword);
         await page.locator('button:has-text("Continue")').first().click();
@@ -371,17 +373,18 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
             }
         }
 
-        await page.locator('button:has-text("Sign up"), button:has-text("注册")').first().click().catch(()=>{});
+        // ✅ إصلاح: دعم النصوص الجديدة للزر (Sign up / Sign up for free / 注册)
+        await page.locator('button:has-text("Sign up for free"), button:has-text("Sign up"), button:has-text("注册"), a:has-text("Sign up")').first().click().catch(()=>{});
+        await sleep(3000);
         
-        await page.waitForSelector('input[name="email"], input[autocomplete="email"]', {timeout: 30000});
+        await page.waitForSelector('input[name="email"], input[autocomplete="email"]', {timeout: 60000});
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 <b>بايثون:</b> كتابة الإيميل ببطء:\n<code>${emailData.email}</code>`, currentPhotoId);
         const emailInput = page.locator('input[name="email"], input[autocomplete="email"]').first();
         await emailInput.focus(); await emailInput.pressSequentially(emailData.email, { delay: 60 });
         await page.locator('button:has-text("Continue")').first().click();
         await sleep(3000);
 
-        await page.waitForSelector('input[type="password"]', {timeout: 30000});
-        currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔐 <b>بايثون:</b> كتابة الباسورد ببطء", currentPhotoId);
+        await page.waitForSelector('input[type="password"]', {timeout: 60000});
         const passInput = page.locator('input[type="password"]').first();
         await passInput.focus(); await passInput.pressSequentially(password, { delay: 60 });
         await page.locator('button:has-text("Continue")').first().click();
