@@ -20,11 +20,11 @@ const crypto = require('crypto');
 
 chromium.use(stealth);
 
-// التوكين الخاص بك - سيتم جلبة من Railway Variables تلقائياً
-const BOT_TOKEN = process.env.BOT_TOKEN;
+// التوكين الخاص بك
+const BOT_TOKEN = process.env.BOT_TOKEN || 'ضع_توكن_البوت_هنا_إذا_لم_يكن_في_البيئة';
 
-if (!BOT_TOKEN) {
-    console.error("❌ خطأ: BOT_TOKEN مفقود في متغيرات البيئة.");
+if (!BOT_TOKEN || BOT_TOKEN === 'ضع_توكن_البوت_هنا_إذا_لم_يكن_في_البيئة') {
+    console.error("❌ خطأ: BOT_TOKEN مفقود.");
     process.exit(1);
 }
 
@@ -139,6 +139,9 @@ async function simulateHumanActivityFast(page) {
     } catch (e) {}
 }
 
+// ============================================================
+// الدالة الرئيسية (مع دمج منطق الـ Python)
+// ============================================================
 async function createAccountLogic(chatId, currentNum, total, manualData = null) {
     const isManual = !!manualData;
     const modeText = isManual ? "(يدوي)" : "(تلقائي)";
@@ -187,12 +190,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
         try {
             const browserOptions = {
                 headless: true,
-                args: [
-                    '--no-sandbox', 
-                    '--disable-setuid-sandbox', 
-                    '--disable-dev-shm-usage', // تحسين لذاكرة Railway
-                    '--disable-blink-features=AutomationControlled'
-                ],
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
                 viewport: { width: 1366, height: 768 },
                 timeout: 45000
             };
@@ -203,31 +201,37 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
 
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🌐 فتح المتصفح", currentPhotoId);
 
+            // الذهاب لموقع ChatGPT
             await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
             await simulateHumanActivityFast(page);
 
+            // الضغط على زر Sign up (بمحاكاة كود البايثون)
             const signupBtn = page.getByRole("button", { name: "Sign up" });
             await signupBtn.waitFor({ state: 'visible', timeout: 30000 }).catch(async () => {
                 await page.locator('button:has-text("Sign up")').click();
             });
             await signupBtn.click();
             
+            // إدخال الإيميل
             await page.waitForSelector('input[name="email"], input[id="email-input"]', {timeout: 30000});
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 إدخال الإيميل: ${email}`, currentPhotoId);
             const emailInput = page.locator('input[name="email"], input[id="email-input"]').first();
             await emailInput.fill(email);
             await sleep(1000);
             
+            // زر Continue بعد الإيميل
             const continueBtn1 = page.getByRole("button", { name: "Continue", exact: true });
             await continueBtn1.click({ force: true });
             await sleep(3000);
 
+            // إدخال الباسورد
             await page.waitForSelector('input[type="password"]', {timeout: 30000});
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔐 إدخال كلمة المرور", currentPhotoId);
             const passInput = page.locator('input[type="password"]').first();
             await passInput.fill(chatGptPassword);
             await sleep(1000);
 
+            // زر Continue بعد الباسورد
             const continueBtn2 = page.getByRole("button", { name: "Continue" });
             await continueBtn2.click({ force: true });
             
@@ -262,6 +266,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 if (!code) throw new Error("فشل جلب الكود التلقائي.");
             }
 
+            // إدخال الكود
             await updateStatus(`إدخال الكود: ${code}`);
             const codeInput = page.getByRole("textbox", { name: "Code" });
             await codeInput.waitFor({ state: 'visible', timeout: 15000 }).catch(async () => {
@@ -272,6 +277,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             }
             await sleep(2000);
 
+            // زر Continue بعد الكود (مهم جداً)
             const continueBtnAfterCode = page.getByRole("button", { name: "Continue" }).last();
             if (await continueBtnAfterCode.isVisible().catch(()=>false)) {
                 await continueBtnAfterCode.click({ force: true });
@@ -280,8 +286,12 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             }
             await sleep(5000); 
 
+            // ==========================================================
+            // 📸 منطق البايثون للاسم والمواليد (مترجم للـ JS)
+            // ==========================================================
             await updateStatus("جاري كتابة الاسم والمواليد...");
             
+            // 1. الاسم
             const nameInputNode = page.getByRole("textbox", { name: "Full name" }).first();
             if (await nameInputNode.isVisible({ timeout: 15000 }).catch(() => false)) {
                 currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 صفحة طلب الاسم مفتوحة", currentPhotoId);
@@ -289,16 +299,24 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 await nameInputNode.fill(fullName);
                 await sleep(1000);
                 
+                // 2. المواليد (بطريقة كود الـ Python السحري!)
+                // المواليد المطلوبة 04/24/2000 وتُكتب متصلة
                 const birthdayString = "04242000"; 
+                
+                // البحث عن spinbutton الخاص بالشهر كما في البايثون
                 const monthSpin = page.locator('[role="spinbutton"][aria-label*="month" i]').first();
                 
                 if (await monthSpin.isVisible({ timeout: 5000 }).catch(() => false)) {
                     await monthSpin.click();
                     await sleep(500);
+                    
+                    // كتابة الأرقام دفعة واحدة وسيوزعها الموقع تلقائياً
                     await page.keyboard.type(birthdayString, { delay: 100 });
                     await sleep(1500);
-                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد: ${birthdayString}`, currentPhotoId);
+                    
+                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد بطريقة البايثون: ${birthdayString}`, currentPhotoId);
                 } else {
+                    // سقطة احتياطية إذا لم يجد spinbutton
                     const altBdayInput = page.locator('input[name="birthday"]').first();
                     if (await altBdayInput.isVisible()) {
                         await altBdayInput.click();
@@ -307,6 +325,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                     }
                 }
 
+                // 3. الضغط على زر الإنهاء
                 const finishBtn = page.getByRole("button", { name: "Continue" }).last();
                 if (await finishBtn.isVisible().catch(() => false)) {
                     await finishBtn.click({ force: true });
@@ -322,6 +341,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 await sleep(8000); 
             }
 
+            // التحقق من النجاح
             await updateStatus("في انتظار الصفحة الرئيسية...");
             await page.waitForURL('**/chat', {timeout: 30000}).catch(()=>{});
             
@@ -355,17 +375,27 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
     return false;
 }
 
+// === أوامر البوت ===
+
 bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id, "👋 أهلاً بك! اختر طريقة الإنشاء:", {
-        parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🤖 تلقائي (حساب 1)', callback_data: 'create_auto' }], [{ text: '✍️ يدوي', callback_data: 'create_manual' }]] }
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '🤖 تلقائي (حساب 1)', callback_data: 'create_auto' }],
+                [{ text: '✍️ يدوي', callback_data: 'create_manual' }]
+            ]
+        }
     });
 });
 
 bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
     bot.answerCallbackQuery(query.id).catch(() => {});
+
     if (query.data === 'create_auto') {
         if (isProcessing) return bot.sendMessage(chatId, "⚠️ مشغول.");
+        delete userState[chatId];
         isProcessing = true;
         await createAccountLogic(chatId, 1, 1, null);
         isProcessing = false;
@@ -381,7 +411,9 @@ bot.on('callback_query', async (query) => {
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text?.trim();
+
     if (!userState[chatId] || !text || text.startsWith('/')) return; 
+
     if (userState[chatId].step === 'awaiting_email') {
         if (!text.includes('@')) return bot.sendMessage(chatId, "❌ إيميل غير صحيح.");
         const autoPass = generateSecurePassword(); 
@@ -395,4 +427,7 @@ bot.on('message', async (msg) => {
 });
 
 bot.onText(/\/clearproxy/, (msg) => { activeProxy = null; bot.sendMessage(msg.chat.id, "🗑️ تم إيقاف البروكسي."); });
+process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
+process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
+
 console.log("🤖 البوت يعمل (الاصدار 24 - كود البايثون المدمج)...");
