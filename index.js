@@ -1,11 +1,11 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 24 (مستوحى من كود Python الناجح)
+ * ChatGPT Bot Creator - الاصدار 25 (تحديث التوافق مع نظام العمر الجديد)
  * ==========================================================
- * - تم تحويل استراتيجية المواليد من كود Python الأصلي إلى JS.
- * - البوت يبحث عن حقل (spinbutton) الخاص بالشهر ويضغط عليه.
- * - يكتب الأرقام متصلة (04242000) لتعني 2000/4/24 ليوزعها الموقع تلقائياً.
- * - تم دمج Mail.tm والأزرار اليدوية/التلقائية بنجاح.
+ * - تم حل مشكلة توقف البوت في صفحة المواليد.
+ * - البوت الآن يفرق بين ما إذا كان الموقع يطلب "العمر" (Age) كرقم (مثال: 25) 
+ * أو يطلب "تاريخ الميلاد" (Birthday) كصيغة (01/01/2000).
+ * - تم استخدام دالة fill لضمان استقرار كتابة البيانات بدون أخطاء المتصفح.
  * ==========================================================
  */
 
@@ -140,7 +140,7 @@ async function simulateHumanActivityFast(page) {
 }
 
 // ============================================================
-// الدالة الرئيسية (مع دمج منطق الـ Python)
+// الدالة الرئيسية
 // ============================================================
 async function createAccountLogic(chatId, currentNum, total, manualData = null) {
     const isManual = !!manualData;
@@ -205,7 +205,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
             await simulateHumanActivityFast(page);
 
-            // الضغط على زر Sign up (بمحاكاة كود البايثون)
             const signupBtn = page.getByRole("button", { name: "Sign up" });
             await signupBtn.waitFor({ state: 'visible', timeout: 30000 }).catch(async () => {
                 await page.locator('button:has-text("Sign up")').click();
@@ -219,7 +218,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await emailInput.fill(email);
             await sleep(1000);
             
-            // زر Continue بعد الإيميل
             const continueBtn1 = page.getByRole("button", { name: "Continue", exact: true });
             await continueBtn1.click({ force: true });
             await sleep(3000);
@@ -231,7 +229,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await passInput.fill(chatGptPassword);
             await sleep(1000);
 
-            // زر Continue بعد الباسورد
             const continueBtn2 = page.getByRole("button", { name: "Continue" });
             await continueBtn2.click({ force: true });
             
@@ -277,7 +274,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             }
             await sleep(2000);
 
-            // زر Continue بعد الكود (مهم جداً)
             const continueBtnAfterCode = page.getByRole("button", { name: "Continue" }).last();
             if (await continueBtnAfterCode.isVisible().catch(()=>false)) {
                 await continueBtnAfterCode.click({ force: true });
@@ -287,9 +283,9 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
             await sleep(5000); 
 
             // ==========================================================
-            // 📸 منطق البايثون للاسم والمواليد (تم التعديل للصيغة المطلوبة)
+            // 📸 منطق الاسم والعمر المحدث (يدعم نظام العمر ونظام المواليد)
             // ==========================================================
-            await updateStatus("جاري كتابة الاسم والمواليد...");
+            await updateStatus("جاري كتابة الاسم والعمر/المواليد...");
             
             // 1. الاسم
             const nameInputNode = page.getByRole("textbox", { name: "Full name" }).first();
@@ -299,25 +295,26 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null) 
                 await nameInputNode.fill(fullName);
                 await sleep(1000);
                 
-                // 2. المواليد (تم التعديل لإضافة الشرطات المائلة /)
-                const birthdayString = "01/01/2000"; 
+                // 2. فحص وإدخال العمر (Age) أو المواليد (Birthday)
+                const ageInput = page.locator('input[name="age"], input[id*="age" i]').first();
+                const bdayInput = page.locator('input[name="birthday"], [aria-label*="birthday" i]').first();
                 
-                // البحث عن حقل المواليد
-                const monthSpin = page.locator('[role="spinbutton"][aria-label*="month" i], input[aria-label*="birthday" i], input[name="birthday"]').first();
-                
-                if (await monthSpin.isVisible({ timeout: 5000 }).catch(() => false)) {
-                    await monthSpin.click();
-                    await sleep(500);
-                    
-                    // كتابة التاريخ بالصيغة المطلوبة
-                    await page.keyboard.type(birthdayString, { delay: 150 });
-                    await sleep(1500);
-                    
-                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال المواليد بالصيغة الجديدة: ${birthdayString}`, currentPhotoId);
+                if (await ageInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+                    // إذا كان الموقع يطلب العمر (النظام الجديد)
+                    await ageInput.click();
+                    await ageInput.fill("25"); 
+                    await sleep(1000);
+                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال العمر: 25`, currentPhotoId);
+                } else if (await bdayInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+                    // إذا كان الموقع لا يزال يطلب تاريخ الميلاد (النظام القديم)
+                    await bdayInput.click();
+                    await bdayInput.fill("01/01/2000"); 
+                    await sleep(1000);
+                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال تاريخ الميلاد: 01/01/2000`, currentPhotoId);
                 } else {
-                    // محاولة أخيرة في حال اختلف شكل الحقل
+                    // محاولة أخيرة احتياطية بالانتقال للحقل التالي وكتابة العمر
                     await page.keyboard.press('Tab');
-                    await page.keyboard.type(birthdayString, { delay: 100 });
+                    await page.keyboard.type("25", { delay: 100 });
                 }
 
                 // 3. الضغط على زر الإنهاء
@@ -425,4 +422,4 @@ bot.onText(/\/clearproxy/, (msg) => { activeProxy = null; bot.sendMessage(msg.ch
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (الاصدار 24 - كود البايثون المدمج)...");
+console.log("🤖 البوت يعمل (الاصدار 25 - متوافق مع تحديث العمر الجديد)...");
