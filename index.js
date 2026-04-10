@@ -246,17 +246,20 @@ async function createAccountLogic_Original(chatId, manualData = null) {
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
         await sleep(1000);
         
-        // ✅ إصلاح: دعم النصوص الجديدة للزر (Sign up / Sign up for free / Get started)
-        await page.locator('button:has-text("Sign up for free"), button:has-text("Sign up"), a:has-text("Sign up")').first().click().catch(()=>{});
-        await sleep(3000);
-
-        await page.waitForSelector('input[name="email"], input[autocomplete="email"]', {timeout: 60000});
+        // 🔄 تحديث ذكي لزر التسجيل الجديد
+        const signUpSelectors = 'button:has-text("Sign up"), a:has-text("Sign up"), text=/Sign up/i, [data-testid="signup-button"], [data-testid="login-screen-signup"]';
+        const signUpBtn = page.locator(signUpSelectors).first();
+        await signUpBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(()=>{});
+        await signUpBtn.click({ force: true }).catch(()=>{});
+        await sleep(3000); // إعطاء المتصفح مهلة للانتقال لصفحة الإيميل
+        
+        await page.waitForSelector('input[name="email"]', {timeout: 30000});
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 <b>الأساسي:</b> إدخال الإيميل:\n<code>${emailData.email}</code>`, currentPhotoId);
         await page.locator('input[name="email"]').first().fill(emailData.email);
         await page.locator('button:has-text("Continue")').first().click();
         await sleep(3000);
 
-        await page.waitForSelector('input[type="password"]', {timeout: 60000});
+        await page.waitForSelector('input[type="password"]', {timeout: 30000});
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔐 <b>الأساسي:</b> إدخال الباسورد...", currentPhotoId);
         await page.locator('input[type="password"]').first().fill(chatGptPassword);
         await page.locator('button:has-text("Continue")').first().click();
@@ -373,18 +376,22 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
             }
         }
 
-        // ✅ إصلاح: دعم النصوص الجديدة للزر (Sign up / Sign up for free / 注册)
-        await page.locator('button:has-text("Sign up for free"), button:has-text("Sign up"), button:has-text("注册"), a:has-text("Sign up")').first().click().catch(()=>{});
-        await sleep(3000);
+        // 🔄 التحديث الذكي لزر التسجيل الجديد في نظام بايثون
+        const signUpSelectorsPy = 'button:has-text("Sign up"), a:has-text("Sign up"), text=/Sign up/i, text="注册", [data-testid="signup-button"], [data-testid="login-screen-signup"]';
+        const signUpBtnPy = page.locator(signUpSelectorsPy).first();
+        await signUpBtnPy.waitFor({ state: 'visible', timeout: 15000 }).catch(()=>{});
+        await signUpBtnPy.click({ force: true }).catch(()=>{});
+        await sleep(3000); // إعطاء المتصفح مهلة للانتقال لصفحة الإيميل
         
-        await page.waitForSelector('input[name="email"], input[autocomplete="email"]', {timeout: 60000});
+        await page.waitForSelector('input[name="email"], input[autocomplete="email"]', {timeout: 30000});
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 <b>بايثون:</b> كتابة الإيميل ببطء:\n<code>${emailData.email}</code>`, currentPhotoId);
         const emailInput = page.locator('input[name="email"], input[autocomplete="email"]').first();
         await emailInput.focus(); await emailInput.pressSequentially(emailData.email, { delay: 60 });
         await page.locator('button:has-text("Continue")').first().click();
         await sleep(3000);
 
-        await page.waitForSelector('input[type="password"]', {timeout: 60000});
+        await page.waitForSelector('input[type="password"]', {timeout: 30000});
+        currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔐 <b>بايثون:</b> كتابة الباسورد ببطء", currentPhotoId);
         const passInput = page.locator('input[type="password"]').first();
         await passInput.focus(); await passInput.pressSequentially(password, { delay: 60 });
         await page.locator('button:has-text("Continue")').first().click();
