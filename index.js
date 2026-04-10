@@ -968,18 +968,3 @@ const { chromium } = require('playwright');
   await page.mouse.click(940, 340); // كليك حر بالماوس
   await browser.close();
 })();
-
-
-عندما يضغط على Authenticator app
-
-يجب ضهر له كود af2
-
-بعدها اريده يذهب الى هذا الموقع
-
-https://2fa.fb.tools/en
-
-ويضع الaf2 ثم يضهر تحت كود ينسخه ويعود الى ChatGPT ويضع الكود
-
-كي يتم تفعيل الaf2
-
-بعد ذلك يقوم بأرسال الaf2 لي
