@@ -1,24 +1,22 @@
 {
-  "name": "gpt-auto-register-telegram-bot",
+  "name": "chatgpt-bot-creator",
   "version": "2.0.0",
-  "description": "ChatGPT Auto Register Bot - Telegram Interface (Railway Deployment)",
+  "description": "ChatGPT Auto Account Creator",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "postinstall": "npx playwright install chromium --with-deps"
   },
   "dependencies": {
-    "node-telegram-bot-api": "^0.66.0",
-    "axios": "^1.7.0",
-    "dotenv": "^16.4.0",
-    "winston": "^3.13.0",
-    "playwright": "^1.59.1",
+    "node-telegram-bot-api": "^0.64.0",
     "playwright-extra": "^4.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "@faker-js/faker": "^10.3.0"
+    "playwright": "^1.42.1",
+    "axios": "^1.6.7",
+    "@faker-js/faker": "^8.4.1",
+    "dotenv": "^16.4.0"
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "license": "MIT"
+  }
 }
