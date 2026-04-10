@@ -1,11 +1,12 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 40 (Ultimate Studio Mode 👑)
+ * ChatGPT Bot Creator - الاصدار 40 (Ultimate RPA Studio 👑)
  * ==========================================================
- * 🔴 بث حي مستمر: يرسل صورة كل ثانية ونصف ويحذف السابقة ليجعلك تواكب الحدث.
- * ✋ التدخل البشري التفاعلي: لا يوجد فشل صامت. يوقف التصوير ويسألك ماذا يضغط.
- * 📜 مسجل السكربت (Macro): يسجل كل حركاتك ويصدرها كملف TXT برمجي.
- * 🌐 محرك 5 APIs للإيميلات، ومحلل فيزا ذكي.
+ * 🔴 بث حي مستمر: تصوير كل ثانية وإيقاف تلقائي عند الخطأ لتدخلك.
+ * ✋ منع الفشل الصامت: كل خطأ يعطيك تنبيه وينتظر أوامرك.
+ * 🖱️ الماوس التفاعلي: ريموت كنترول بأسهم دقيقة ونقطة حمراء للملاحة والكليك.
+ * 📝 محرك الحقول: تعبئة أي مربع نص عبر أمر (حقل: اسم = قيمة).
+ * 📜 مسجل الأكواد: يسجل إحداثيات الماوس وحركاتك لصنع سكربت TXT دقيق.
  * ==========================================================
  */
 
@@ -43,7 +44,7 @@ function saveConfig() { fs.writeFileSync(GLOBAL_CONFIG_FILE, JSON.stringify(glob
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ==========================================
-// 🔴 نظام البث الحي (Live Stream Engine)
+// 🔴 نظام البث الحي والمساعدات البصرية (Live Stream)
 // ==========================================
 async function startLiveStream(chatId, page) {
     if (userState[chatId].isLiveStreamActive) return;
@@ -54,31 +55,61 @@ async function startLiveStream(chatId, page) {
         while (userState[chatId] && userState[chatId].isLiveStreamActive && !page.isClosed()) {
             try {
                 const p = path.join(__dirname, `live_${crypto.randomBytes(2).toString('hex')}.jpg`);
-                // جودة 40 لضمان السرعة وعدم استهلاك باقة الإنترنت
-                await page.screenshot({ path: p, type: 'jpeg', quality: 40 }).catch(()=>{});
+                await page.screenshot({ path: p, type: 'jpeg', quality: 35 }).catch(()=>{});
                 
                 if (fs.existsSync(p)) {
-                    const sent = await bot.sendPhoto(chatId, p, { caption: "🔴 <b>بث حي للشاشة (يتحدث تلقائياً)...</b>\nراقب العملية هنا.", parse_mode: 'HTML', disable_notification: true });
-                    if (userState[chatId].streamMessageId) {
-                        bot.deleteMessage(chatId, userState[chatId].streamMessageId).catch(()=>{});
-                    }
+                    const sent = await bot.sendPhoto(chatId, p, { caption: "🔴 <b>بث حي للشاشة (يتحدث تلقائياً)...</b>\nإذا توقف السكربت سيطلب تدخلك.", parse_mode: 'HTML', disable_notification: true });
+                    if (userState[chatId].streamMessageId) bot.deleteMessage(chatId, userState[chatId].streamMessageId).catch(()=>{});
                     userState[chatId].streamMessageId = sent.message_id;
                     fs.unlinkSync(p);
                 }
             } catch (e) {}
-            await sleep(1500); // إطار كل ثانية ونصف
+            await sleep(1500); // التقاط صورة كل ثانية ونصف
         }
         if (userState[chatId]?.streamMessageId) bot.deleteMessage(chatId, userState[chatId].streamMessageId).catch(()=>{});
     })();
 }
 
+// رسم نقطة الماوس الحمراء على الشاشة
+async function drawVirtualCursor(page, x, y) {
+    await page.evaluate(({cx, cy}) => {
+        let cursor = document.getElementById('bot-virtual-cursor');
+        if (!cursor) {
+            cursor = document.createElement('div');
+            cursor.id = 'bot-virtual-cursor';
+            cursor.style.position = 'fixed';
+            cursor.style.width = '20px'; cursor.style.height = '20px';
+            cursor.style.borderRadius = '50%'; cursor.style.backgroundColor = 'rgba(255, 0, 0, 0.7)';
+            cursor.style.border = '2px solid white'; cursor.style.boxShadow = '0 0 10px black';
+            cursor.style.zIndex = '99999999';
+            cursor.style.pointerEvents = 'none'; // يعبر النقر من خلال النقطة
+            document.body.appendChild(cursor);
+        }
+        cursor.style.display = 'block';
+        cursor.style.left = (cx - 10) + 'px';
+        cursor.style.top = (cy - 10) + 'px';
+    }, {cx: x, cy: y}).catch(()=>{});
+}
+
+function getMouseKb() {
+    return {
+        inline_keyboard: [
+            [{ text: '↖️', callback_data: 'mouse_ul_50' }, { text: '⬆️ كبير (50)', callback_data: 'mouse_up_50' }, { text: '↗️', callback_data: 'mouse_ur_50' }],
+            [{ text: '⬅️ كبير', callback_data: 'mouse_left_50' }, { text: '🖱️ كليك!', callback_data: 'mouse_click' }, { text: 'كبير ➡️', callback_data: 'mouse_right_50' }],
+            [{ text: '↙️', callback_data: 'mouse_dl_50' }, { text: '⬇️ كبير (50)', callback_data: 'mouse_down_50' }, { text: '↘️', callback_data: 'mouse_dr_50' }],
+            [{ text: '⬆️ دقيق (10)', callback_data: 'mouse_up_10' }, { text: '⬇️ دقيق (10)', callback_data: 'mouse_down_10' }],
+            [{ text: '⬅️ دقيق', callback_data: 'mouse_left_10' }, { text: 'دقيق ➡️', callback_data: 'mouse_right_10' }],
+            [{ text: '❌ إغلاق الماوس', callback_data: 'mouse_close' }]
+        ]
+    };
+}
+
 // ==========================================
-// 🤖 النواة الذكية (مغلف الأوامر، الماكرو، والتحكم اليدوي)
+// 🤖 النواة الذكية (مغلف الأوامر، الماوس، والحقول)
 // ==========================================
 async function runAction(chatId, page, actionName, timeoutMs, actionFn, generatedCode) {
     if (userState[chatId]?.cancel) throw new Error("CANCELLED");
-    
-    if (generatedCode) userState[chatId].scriptLog.push(`  ${generatedCode}`);
+    if (generatedCode) userState[chatId].scriptLog.push(`  // الخطوة: ${actionName}\n  ${generatedCode}`);
 
     try {
         await Promise.race([
@@ -88,25 +119,29 @@ async function runAction(chatId, page, actionName, timeoutMs, actionFn, generate
     } catch (error) {
         if (userState[chatId]?.cancel) throw new Error("CANCELLED");
         
-        userState[chatId].isLiveStreamActive = false; // إيقاف البث الحي مؤقتاً
-        
+        userState[chatId].isLiveStreamActive = false; // 🛑 إيقاف البث الحي للسماح بالتدخل البشري
+        await sleep(1500); // مهلة لإيقاف البث
+
         const errPath = path.join(__dirname, `err_${crypto.randomBytes(2).toString('hex')}.jpg`);
         await page.screenshot({ path: errPath, quality: 70, type: 'jpeg' }).catch(()=>{});
         
-        await bot.sendPhoto(chatId, errPath, {
-            caption: `⚠️ <b>توقف السكربت! (تم منع الفشل الصامت)</b>\n\n` +
-                     `الخطوة: <b>${actionName}</b>\nالسبب: <code>${error.message}</code>\n\n` +
-                     `🛑 <b>أرسل الكلمة التي تريد الضغط عليها مباشرة هنا في الشات.</b>\n` +
-                     `أو استخدم الأوامر التالية:\n` +
-                     `✍️ <code>اكتب: النص</code> (للكتابة في الحقل)\n` +
-                     `⌨️ <code>مفتاح: Enter</code> (لضغط زر كيبورد)\n` +
-                     `⏭️ <code>تخطي</code> (لتجاوز المشكلة وإكمال العمل الآلي)\n` +
-                     `📸 <code>صورة</code> (لطلب صورة حديثة للشاشة)\n` +
-                     `✅ <code>انهاء</code> (لإيقاف العمل واستخراج السكربت txt)`,
-            parse_mode: 'HTML'
+        const captionText = `⚠️ <b>توقف السكربت! (تم منع الفشل الصامت)</b>\n\n` +
+                            `الخطوة: <b>${actionName}</b>\nالسبب: <code>${error.message}</code>\n\n` +
+                            `🛑 <b>أرسل الكلمة التي تريد الضغط عليها مباشرة، أو استخدم:</b>\n` +
+                            `📝 <code>حقل: الاسم = القيمة</code> (لتعبئة حقل، مثال: حقل: age = 25)\n` +
+                            `✍️ <code>اكتب: النص</code> (للكتابة أينما كنت)\n` +
+                            `⌨️ <code>مفتاح: Enter</code>\n` +
+                            `⏭️ <code>تخطي</code> (لإكمال العمل الآلي)\n` +
+                            `✅ <code>انهاء</code>`;
+
+        const sentErr = await bot.sendPhoto(chatId, errPath, {
+            caption: captionText,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [[{ text: '🖱️ الماوس (تحكم حر)', callback_data: 'open_mouse' }]] }
         }).catch(()=>{});
         if(fs.existsSync(errPath)) fs.unlinkSync(errPath);
-
+        
+        userState[chatId].errorMsgId = sentErr?.message_id;
         userState[chatId].interactiveMode = true;
         
         while (userState[chatId].interactiveMode && !page.isClosed()) {
@@ -115,64 +150,81 @@ async function runAction(chatId, page, actionName, timeoutMs, actionFn, generate
             userState[chatId].step = 'WAIT_MANUAL_COMMAND';
             const input = await new Promise(res => userState[chatId].manualResolve = res);
             
-            if (input === 'انهاء') {
-                userState[chatId].interactiveMode = false;
-                throw new Error("STOPPED_BY_USER");
+            if (input === 'MOUSE_CLICKED') {
+                await sleep(1500);
+                const p2 = path.join(__dirname, `res_${crypto.randomBytes(2).toString('hex')}.jpg`);
+                await page.screenshot({ path: p2, quality: 70, type: 'jpeg' }).catch(()=>{});
+                const sentRes = await bot.sendPhoto(chatId, p2, { caption: `📸 <b>تم النقر بالماوس!</b>\nإذا نجحت، أرسل <code>تخطي</code> للإكمال.`, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '🖱️ فتح الماوس مجدداً', callback_data: 'open_mouse' }]] } });
+                userState[chatId].errorMsgId = sentRes.message_id;
+                if (fs.existsSync(p2)) fs.unlinkSync(p2);
+                continue;
             }
+
+            if (input === 'انهاء') { userState[chatId].interactiveMode = false; throw new Error("STOPPED_BY_USER"); }
             if (input === 'تخطي') {
                 userState[chatId].scriptLog.push(`  // المستخدم تخطى خطوة: ${actionName}`);
                 await bot.sendMessage(chatId, "⏭️ تم التخطي. جاري استئناف العمل الآلي وبدء الكاميرا...");
-                userState[chatId].interactiveMode = false;
-                break;
-            }
-            if (input === 'صورة') {
-                const p = path.join(__dirname, `pic_${crypto.randomBytes(2).toString('hex')}.jpg`);
-                await page.screenshot({ path: p, quality: 70, type: 'jpeg' }).catch(()=>{});
-                await bot.sendPhoto(chatId, p, { caption: "📸 صورة الشاشة الحالية:" });
-                if (fs.existsSync(p)) fs.unlinkSync(p);
-                continue;
+                userState[chatId].interactiveMode = false; break;
             }
 
             const waitMsg = await bot.sendMessage(chatId, "⏳ جاري تنفيذ أمرك...");
             try {
-                if (input.startsWith('اكتب:')) {
-                    const text = input.replace('اكتب:', '').trim();
-                    await page.keyboard.type(text, { delay: 50 });
-                    userState[chatId].scriptLog.push(`  await page.keyboard.type("${text.replace(/"/g, '\\"')}", { delay: 50 }); // أمر يدوي`);
-                } else if (input.startsWith('مفتاح:')) {
-                    const key = input.replace('مفتاح:', '').trim();
-                    await page.keyboard.press(key);
-                    userState[chatId].scriptLog.push(`  await page.keyboard.press("${key}"); // أمر يدوي`);
-                } else {
+                if (input.startsWith('حقل:')) {
+                    const parts = input.replace('حقل:', '').split('=');
+                    if (parts.length >= 2) {
+                        const field = parts[0].trim().toLowerCase(); const val = parts.slice(1).join('=').trim();
+                        const injectedSelector = await page.evaluate(({f}) => {
+                            const els = Array.from(document.querySelectorAll('input, textarea'));
+                            let target = els.find(e => (e.name && e.name.toLowerCase().includes(f)) || (e.id && e.id.toLowerCase().includes(f)) || (e.placeholder && e.placeholder.toLowerCase().includes(f)) || (e.getAttribute('data-testid') && e.getAttribute('data-testid').toLowerCase().includes(f)));
+                            if(target && target.offsetParent !== null) { 
+                                target.focus(); target.value = ''; 
+                                return target.name ? `input[name="${target.name}"]` : target.id ? `input[id="${target.id}"]` : target.placeholder ? `input[placeholder="${target.placeholder}"]` : `[data-testid="${target.getAttribute('data-testid')}"]`; 
+                            }
+                            return null;
+                        }, {f: field});
+
+                        if (injectedSelector) {
+                            await page.keyboard.type(val, { delay: 60 });
+                            userState[chatId].scriptLog.push(`  // تعبئة الحقل المخصص (${field})`);
+                            userState[chatId].scriptLog.push(`  await page.locator('${injectedSelector}').fill('${val.replace(/'/g, "\\'")}');`);
+                        } else await bot.sendMessage(chatId, `❌ لم أجد حقل يطابق: "${field}"`);
+                    } else await bot.sendMessage(chatId, `❌ استخدم الصيغة: حقل: اسم = قيمة`);
+                } 
+                else if (input.startsWith('اكتب:')) {
+                    const text = input.replace('اكتب:', '').trim(); await page.keyboard.type(text, { delay: 50 });
+                    userState[chatId].scriptLog.push(`  await page.keyboard.type("${text.replace(/"/g, '\\"')}", { delay: 50 });`);
+                } 
+                else if (input.startsWith('مفتاح:')) {
+                    const key = input.replace('مفتاح:', '').trim(); await page.keyboard.press(key);
+                    userState[chatId].scriptLog.push(`  await page.keyboard.press("${key}");`);
+                } 
+                else {
                     const jsClick = await page.evaluate((t) => {
-                        const els = Array.from(document.querySelectorAll('button, a, div, span, input, p'));
+                        const els = Array.from(document.querySelectorAll('button, a, div, span, input, p, label'));
                         let target = els.find(el => el.innerText && el.innerText.trim().toLowerCase() === t.trim().toLowerCase() && el.offsetParent !== null);
                         if (!target) target = els.find(el => el.innerText && el.innerText.toLowerCase().includes(t.trim().toLowerCase()) && el.offsetParent !== null);
-                        if (!target) target = els.find(el => (el.value?.toLowerCase().includes(t.toLowerCase()) || el.placeholder?.toLowerCase().includes(t.toLowerCase())) && el.offsetParent !== null);
+                        if (!target) target = els.find(el => ((el.value||'').toLowerCase().includes(t.toLowerCase()) || (el.placeholder||'').toLowerCase().includes(t.toLowerCase())) && el.offsetParent !== null);
                         if (target) { target.click(); return true; } return false;
                     }, input);
                     if (jsClick) {
-                        userState[chatId].scriptLog.push(`  // تدخل يدوي: تم النقر الذكي على عنصر يحتوي "${input}"`);
-                        userState[chatId].scriptLog.push(`  await page.evaluate((t) => { const els = Array.from(document.querySelectorAll('button, a, div, span, input, p')); let target = els.find(el => el.innerText && el.innerText.trim().toLowerCase() === t.trim().toLowerCase() && el.offsetParent !== null); if (!target) target = els.find(el => el.innerText && el.innerText.toLowerCase().includes(t.trim().toLowerCase()) && el.offsetParent !== null); if (!target) target = els.find(el => (el.value?.toLowerCase().includes(t.toLowerCase()) || el.placeholder?.toLowerCase().includes(t.toLowerCase())) && el.offsetParent !== null); if (target) target.click(); }, "${input.replace(/"/g, '\\"')}");`);
-                    } else {
-                        await bot.sendMessage(chatId, `❌ لم أجد كلمة "${input}" ظاهرة على الشاشة.`);
-                    }
+                        userState[chatId].scriptLog.push(`  // النقر الذكي على كلمة: ${input}`);
+                        userState[chatId].scriptLog.push(`  await page.evaluate((t) => { const els = Array.from(document.querySelectorAll('button, a, div, span, input, p, label')); let tgt = els.find(e => e.innerText && e.innerText.includes(t)); if(tgt) tgt.click(); }, "${input.replace(/"/g, '\\"')}");`);
+                    } else await bot.sendMessage(chatId, `❌ لم أجد كلمة "${input}" ظاهرة على الشاشة.`);
                 }
                 
                 await sleep(1500); 
                 const p2 = path.join(__dirname, `res_${crypto.randomBytes(2).toString('hex')}.jpg`);
                 await page.screenshot({ path: p2, quality: 70, type: 'jpeg' }).catch(()=>{});
-                await bot.sendPhoto(chatId, p2, { caption: `📸 النتيجة:\nإذا تم حل المشكلة أرسل <code>تخطي</code> لإكمال السكربت، أو أدخل أمر جديد.`, parse_mode: 'HTML' });
+                const sentRes = await bot.sendPhoto(chatId, p2, { caption: `📸 <b>النتيجة:</b>\nإذا تم حل المشكلة أرسل <code>تخطي</code> للإكمال.`, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '🖱️ الماوس', callback_data: 'open_mouse' }]] } });
+                userState[chatId].errorMsgId = sentRes.message_id;
                 if (fs.existsSync(p2)) fs.unlinkSync(p2);
                 
             } catch (e) {
                 await bot.sendMessage(chatId, `❌ خطأ التنفيذ: ${e.message}`);
-            } finally {
-                await bot.deleteMessage(chatId, waitMsg.message_id).catch(()=>{});
-            }
+            } finally { await bot.deleteMessage(chatId, waitMsg.message_id).catch(()=>{}); }
         }
         
-        userState[chatId].isLiveStreamActive = true; // استئناف البث عند تخطي المشكلة
+        userState[chatId].isLiveStreamActive = true; // استئناف الكاميرا
         startLiveStream(chatId, page);
     }
 }
@@ -234,7 +286,7 @@ const EmailManager = {
 };
 
 function py_generatePassword() { return crypto.randomBytes(8).toString('hex') + "Aa1!"; }
-function py_generateBirthday() { return { year: String(2000), month: "01", day: "01" }; }
+function py_generateBirthday() { return { year: String(Math.floor(Math.random() * 15) + 1990), month: "01", day: "01" }; }
 function py_generateUsAddress(name) { return { name: name, zip: "10001", state: "New York", city: "New York", address1: `${Math.floor(Math.random()*900)+100} Main St` }; }
 
 async function py_fillStripeIframe(page, selectors, value, chatId) {
@@ -264,11 +316,11 @@ async function py_fillStripeIframe(page, selectors, value, chatId) {
 // 🟥=======================================================================🟥
 async function createAccountLogic_Original(chatId, manualData = null) {
     userState[chatId].scriptLog = [
-        "// Auto-Generated Playwright Script - ChatGPT Bot Creator V40",
+        "// 🎬 Auto-Generated Playwright Script - RPA Studio Mode",
         "const { chromium } = require('playwright');",
         "(async () => {",
         "  const browser = await chromium.launch({ headless: false });",
-        "  const context = await browser.newContext();",
+        "  const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });",
         "  const page = await context.newPage();"
     ];
 
@@ -282,9 +334,14 @@ async function createAccountLogic_Original(chatId, manualData = null) {
     let context, page;
 
     try {
-        context = await chromium.launchPersistentContext(tempDir, { headless: true, args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'] });
+        context = await chromium.launchPersistentContext(tempDir, { 
+            headless: true, 
+            viewport: { width: 1280, height: 720 }, // إجبار حجم الشاشة لدقة الماوس
+            args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'] 
+        });
         if (userState[chatId]) userState[chatId].context = context; 
         page = await context.newPage();
+        userState[chatId].currentPage = page; // ربط الصفحة بالتحكم اليدوي
 
         startLiveStream(chatId, page);
 
@@ -296,16 +353,13 @@ async function createAccountLogic_Original(chatId, manualData = null) {
         await runAction(chatId, page, "الضغط على زر التسجيل", 15000, async () => {
             let clickedSignUp = false;
             const signUpSelectors = ['[data-testid="login-screen-signup"]', 'button:has-text("Sign up for free")', 'button:has-text("Sign up")', 'a:has-text("Sign up for free")'];
-            for (const sel of signUpSelectors) {
-                const btnLocator = page.locator(sel).first();
-                if (await btnLocator.isVisible().catch(()=>false)) { await btnLocator.click().catch(()=>{}); clickedSignUp = true; break; }
-            }
+            for (const sel of signUpSelectors) { const btnLocator = page.locator(sel).first(); if (await btnLocator.isVisible().catch(()=>false)) { await btnLocator.click().catch(()=>{}); clickedSignUp = true; break; } }
             if (!clickedSignUp) {
                 const jsClick = await page.evaluate(() => { const btns = Array.from(document.querySelectorAll('button, a')); const target = btns.find(b => b.innerText && b.innerText.toLowerCase().includes('sign up') && b.offsetParent !== null); if (target) { target.click(); return true; } return false; }).catch(()=>{});
                 if(!jsClick) throw new Error("لم أجد زر Sign up");
             }
             await sleep(4000);
-        }, `  // Clicked Sign up`);
+        }, `  // Clicked Sign up button`);
 
         await runAction(chatId, page, "كتابة الإيميل", 20000, async () => {
             const emailSelectors = 'input[name="email"], input[type="email"], input[autocomplete="email"]';
@@ -327,8 +381,7 @@ async function createAccountLogic_Original(chatId, manualData = null) {
             bot.sendMessage(chatId, "🛑 الأساسي: أرسل الكود هنا في الشات...");
             code = await new Promise((res, rej) => {
                 const listener = (msg) => { if (msg.chat.id === chatId && /^\d{6}$/.test(msg.text?.trim())) { bot.removeListener('message', listener); res(msg.text.trim()); } };
-                bot.on('message', listener);
-                const c = setInterval(()=>{ if(userState[chatId]?.cancel){ clearInterval(c); bot.removeListener('message', listener); rej(new Error("CANCELLED")); } }, 1000);
+                bot.on('message', listener); const c = setInterval(()=>{ if(userState[chatId]?.cancel){ clearInterval(c); bot.removeListener('message', listener); rej(new Error("CANCELLED")); } }, 1000);
             });
         } else { code = await EmailManager.waitForCode(emailData, chatId, "[الأساسي]"); }
         if (!code) throw new Error("لم يتم استلام الكود.");
@@ -341,14 +394,11 @@ async function createAccountLogic_Original(chatId, manualData = null) {
             
             const continueBtnLocator = page.locator('button:has-text("Continue"), button[type="submit"]').first();
             if (await continueBtnLocator.isVisible().catch(()=>false) && await continueBtnLocator.isEnabled().catch(()=>false)) { await continueBtnLocator.click().catch(()=>{}); } 
-            else {
-                const jsClick = await page.evaluate(() => { const btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.toLowerCase().includes('continue')); if (btn && !btn.disabled) { btn.click(); return true; } return false; }).catch(()=>false);
-                if(!jsClick) await page.keyboard.press('Enter').catch(()=>{});
-            }
+            else { const jsClick = await page.evaluate(() => { const btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.toLowerCase().includes('continue')); if (btn && !btn.disabled) { btn.click(); return true; } return false; }).catch(()=>false); if(!jsClick) await page.keyboard.press('Enter').catch(()=>{}); }
             await sleep(5000);
-        }, `  await page.keyboard.type('${code}');\n  await page.locator('button:has-text("Continue")').click();`);
+        }, `  await page.keyboard.type('${code}');\n  await page.keyboard.press('Enter');`);
 
-        await runAction(chatId, page, "تعبئة الاسم والعمر", 25000, async () => {
+        await runAction(chatId, page, "الاسم والعمر", 25000, async () => {
             if (await page.locator('input[name="name"], input[autocomplete="name"]').isVisible().catch(()=>false)) {
                 const nameInput = page.locator('input[name="name"], input[autocomplete="name"]').first();
                 await nameInput.fill(''); await nameInput.pressSequentially(fullName, { delay: 60 }); await sleep(1000);
@@ -364,8 +414,8 @@ async function createAccountLogic_Original(chatId, manualData = null) {
                 const finishBtn = page.locator('button:has-text("Finish"), button:has-text("Continue"), button[type="submit"]').last();
                 if (await finishBtn.isVisible().catch(()=>false)) { await finishBtn.click(); } else { await page.keyboard.press('Enter'); }
                 await sleep(8000);
-            }
-        }, `  // Filled Name and Age`);
+            } else throw new Error("لم تظهر حقول الاسم والعمر");
+        }, `  // Auto Filled Name and Age`);
 
         await runAction(chatId, page, "انتظار الصفحة الرئيسية", 30000, async () => { await page.waitForURL('**/chat'); }, `  // Reached Chat page`);
 
@@ -383,10 +433,10 @@ async function createAccountLogic_Original(chatId, manualData = null) {
         try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
         
         if (userState[chatId].scriptLog && userState[chatId].scriptLog.length > 6) {
-            userState[chatId].scriptLog.push("  // await browser.close();\n})();");
+            userState[chatId].scriptLog.push("  await browser.close();\n})();");
             const scriptPath = path.join(__dirname, `MacroScript_${Date.now()}.txt`);
             fs.writeFileSync(scriptPath, userState[chatId].scriptLog.join('\n'));
-            await bot.sendDocument(chatId, scriptPath, { caption: "📜 <b>ملف الأتمتة التلقائي (RPA Tool):</b>\nيحتوي على الأكواد للحركات الآلية واليدوية التي قمت بها.", parse_mode: 'HTML' }).catch(()=>{});
+            await bot.sendDocument(chatId, scriptPath, { caption: "📜 <b>سكربت الخطوات (Macro Recorder):</b>\nأرسل لي هذا الملف لأبرمج لك أداة لا تخطئ بناءً على خطواتك.", parse_mode: 'HTML' }).catch(()=>{});
             fs.unlinkSync(scriptPath);
         }
     }
@@ -397,11 +447,11 @@ async function createAccountLogic_Original(chatId, manualData = null) {
 // 🟦=======================================================================🟦
 async function createPythonProjectLogic(chatId, currentNum, total, mode, manualData = null) {
     userState[chatId].scriptLog = [
-        "// Auto-Generated Playwright Script - ChatGPT Bot Creator V40",
+        "// 🎬 Auto-Generated Playwright Script - RPA Studio Mode",
         "const { chromium } = require('playwright');",
         "(async () => {",
         "  const browser = await chromium.launch({ headless: false });",
-        "  const context = await browser.newContext();",
+        "  const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });",
         "  const page = await context.newPage();"
     ];
 
@@ -417,10 +467,15 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
     let context, page; let accountSuccess = false;
 
     try {
-        const browserOptions = { headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] };
+        const browserOptions = { 
+            headless: true, 
+            viewport: { width: 1280, height: 720 },
+            args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] 
+        };
         context = await chromium.launchPersistentContext(tempDir, browserOptions);
         userState[chatId].context = context; 
         page = await context.newPage();
+        userState[chatId].currentPage = page;
 
         startLiveStream(chatId, page);
 
@@ -438,16 +493,10 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
         await runAction(chatId, page, "الضغط على زر التسجيل", 15000, async () => {
             let clickedSignUpPy = false;
             const signUpSelectorsPy = ['[data-testid="login-screen-signup"]', 'button:has-text("Sign up for free")', 'button:has-text("Sign up")', 'button:has-text("注册")'];
-            for (const sel of signUpSelectorsPy) {
-                const btnLocator = page.locator(sel).first();
-                if (await btnLocator.isVisible().catch(()=>false)) { await btnLocator.click().catch(()=>{}); clickedSignUpPy = true; break; }
-            }
-            if (!clickedSignUpPy) {
-                const jsClick = await page.evaluate(() => { const btns = Array.from(document.querySelectorAll('button, a')); const target = btns.find(b => b.innerText && /sign up|注册/i.test(b.innerText) && b.offsetParent !== null); if (target) { target.click(); return true; } return false; }).catch(()=>{});
-                if(!jsClick) throw new Error("لم أجد زر Sign up");
-            }
+            for (const sel of signUpSelectorsPy) { const btnLocator = page.locator(sel).first(); if (await btnLocator.isVisible().catch(()=>false)) { await btnLocator.click().catch(()=>{}); clickedSignUpPy = true; break; } }
+            if (!clickedSignUpPy) { const jsClick = await page.evaluate(() => { const btns = Array.from(document.querySelectorAll('button, a')); const target = btns.find(b => b.innerText && /sign up|注册/i.test(b.innerText) && b.offsetParent !== null); if (target) { target.click(); return true; } return false; }).catch(()=>{}); if(!jsClick) throw new Error("لم أجد زر Sign up"); }
             await sleep(4000);
-        }, `  // Clicked Sign up`);
+        }, `  // Clicked Sign up button`);
 
         await runAction(chatId, page, "كتابة الإيميل", 20000, async () => {
             const emailSelectorsPy = 'input[name="email"], input[type="email"], input[autocomplete="email"]';
@@ -471,8 +520,7 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
             bot.sendMessage(chatId, "🛑 بايثون: أرسل الكود هنا في الشات...");
             code = await new Promise((res, rej) => {
                 const listener = (msg) => { if (msg.chat.id === chatId && /^\d{6}$/.test(msg.text?.trim())) { bot.removeListener('message', listener); res(msg.text.trim()); } };
-                bot.on('message', listener);
-                const c = setInterval(()=>{ if(userState[chatId]?.cancel){ clearInterval(c); bot.removeListener('message', listener); rej(new Error("CANCELLED")); } }, 1000);
+                bot.on('message', listener); const c = setInterval(()=>{ if(userState[chatId]?.cancel){ clearInterval(c); bot.removeListener('message', listener); rej(new Error("CANCELLED")); } }, 1000);
             });
         } else { code = await EmailManager.waitForCode(emailData, chatId, "[بايثون]"); }
         if (!code) throw new Error("لم يتم استلام كود بايثون.");
@@ -485,12 +533,9 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
             
             const continueBtnLocatorPy = page.locator('button:has-text("Continue"), button[type="submit"]').first();
             if (await continueBtnLocatorPy.isVisible().catch(()=>false) && await continueBtnLocatorPy.isEnabled().catch(()=>false)) { await continueBtnLocatorPy.click().catch(()=>{}); } 
-            else {
-                const jsClick = await page.evaluate(() => { const btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.toLowerCase().includes('continue')); if (btn && !btn.disabled) { btn.click(); return true; } return false; }).catch(()=>false);
-                if(!jsClick) await page.keyboard.press('Enter').catch(()=>{});
-            }
+            else { const jsClick = await page.evaluate(() => { const btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.toLowerCase().includes('continue')); if (btn && !btn.disabled) { btn.click(); return true; } return false; }).catch(()=>false); if(!jsClick) await page.keyboard.press('Enter').catch(()=>{}); }
             await sleep(5000);
-        }, `  await page.keyboard.type('${code}');\n  await page.locator('button:has-text("Continue")').click();`);
+        }, `  await page.keyboard.type('${code}');\n  await page.keyboard.press('Enter');`);
 
         await runAction(chatId, page, "الاسم والعمر", 25000, async () => {
             if (await page.locator('input[name="name"], input[autocomplete="name"]').isVisible().catch(()=>false)) {
@@ -498,7 +543,7 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
                 await nameInput.fill(''); await nameInput.pressSequentially(pyName, { delay: 60 }); await sleep(1000);
                 
                 const isAgeFormat = await page.locator('text=/How old are you/i').isVisible().catch(()=>false);
-                const ageInput = page.locator('input[name="age"], input[id="age"], input[placeholder*="Age"], [data-testid="age-input"]').first();
+                const ageInput = page.locator('input[name="age"], input[id="age"], input[placeholder*="Age"]').first();
                 const calculatedAge = String(new Date().getFullYear() - parseInt(pyDOB.year)); 
 
                 if (await ageInput.isVisible().catch(()=>false)) { await ageInput.click(); await page.keyboard.press('Control+A'); await ageInput.pressSequentially(calculatedAge, { delay: 60 }); } 
@@ -508,8 +553,8 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
                 const finishBtn = page.locator('button:has-text("Finish"), button:has-text("Continue"), button[type="submit"]').last();
                 if (await finishBtn.isVisible().catch(()=>false)) { await finishBtn.click(); } else { await page.keyboard.press('Enter'); }
                 await sleep(8000);
-            }
-        }, `  // Filled Name and Age`);
+            } else throw new Error("لم تظهر حقول الاسم والعمر");
+        }, `  // Auto-Filled Name and Age`);
 
         await runAction(chatId, page, "انتظار الصفحة الرئيسية", 30000, async () => { await page.waitForURL('**/chat'); }, `  // Reached Chat page`);
 
@@ -528,7 +573,7 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
                 for(let xp of ['//div[contains(., "Plus")]//button[contains(., "Start trial") or contains(., "Upgrade")]', '//button[contains(., "Upgrade to Plus")]']) { const btn = page.locator(xp).first(); if(await btn.isVisible().catch(()=>false)) { await btn.scrollIntoViewIfNeeded().catch(()=>{}); await btn.click({force:true}); clicked = true; break; } }
                 if(!clicked) throw new Error("لم يتم العثور على زر الترقية.");
                 await sleep(12000); 
-            }, `  // Reached Stripe Checkoout`);
+            }, `  // Reached Stripe Checkout`);
             
             if (mode === 'AUTO_VISA' || mode === 'MANUAL_VISA') {
                 accountSuccess = true;
@@ -566,7 +611,7 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
                         for (const xp of ['//*[contains(text(), "Cancel subscription")]', '//button[contains(., "Cancel plan")]']) { const btn = page.locator(xp).first(); if (await btn.isVisible().catch(()=>false)) { await btn.click({force: true}); await sleep(2000); break; } }
                         await page.locator('//button[contains(., "Cancel") or contains(., "Confirm")]').first().click({force:true}).catch(()=>{});
                     } catch (e) {}
-                }, `  // Handled Stripe and Cancellation`);
+                }, `  // Stripe automation completed`);
 
                 accountSuccess = true; bot.sendMessage(chatId, `🎉 <b>تمت الأتمتة الشاملة بنجاح!</b>\n\n✅ الحساب:\n<code>${result}</code>`, {parse_mode:'HTML'});
             }
@@ -577,16 +622,16 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
         if(error.message !== "CANCELLED" && error.message !== "STOPPED_BY_USER") { globalConfig.pyFail++; saveConfig(); bot.sendMessage(chatId, `❌ خطأ بايثون تم إنهاؤه.`); }
         return false;
     } finally {
-        userState[chatId].isLiveStreamActive = false; // stop stream
+        userState[chatId].isLiveStreamActive = false; 
         if (context) await context.close().catch(()=>{});
         if (userState[chatId]) userState[chatId].context = null; 
         try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
         
         if (userState[chatId].scriptLog && userState[chatId].scriptLog.length > 6) {
-            userState[chatId].scriptLog.push("  // await browser.close();\n})();");
+            userState[chatId].scriptLog.push("  await browser.close();\n})();");
             const scriptPath = path.join(__dirname, `MacroScript_${Date.now()}.txt`);
             fs.writeFileSync(scriptPath, userState[chatId].scriptLog.join('\n'));
-            await bot.sendDocument(chatId, scriptPath, { caption: "📜 <b>ملف الأتمتة التلقائي:</b>\nيحتوي على الأكواد للحركات الآلية واليدوية التي قمت بها.", parse_mode: 'HTML' }).catch(()=>{});
+            await bot.sendDocument(chatId, scriptPath, { caption: "📜 <b>سكربت الخطوات (Macro Recorder):</b>\nأرسل لي هذا الملف لأبرمج لك أداة لا تخطئ بناءً على خطواتك.", parse_mode: 'HTML' }).catch(()=>{});
             fs.unlinkSync(scriptPath);
         }
     }
@@ -692,6 +737,60 @@ bot.onText(/\/start/, (msg) => {
 bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id; const msgId = query.message.message_id;
     bot.answerCallbackQuery(query.id).catch(() => {});
+    
+    // 🖱️ اعتراض أزرار الماوس
+    if (query.data === 'open_mouse' || query.data.startsWith('mouse_')) {
+        const page = userState[chatId].currentPage;
+        if (!page || page.isClosed()) { bot.sendMessage(chatId, "⚠️ الصفحة غير نشطة للماوس."); return; }
+        
+        if (query.data === 'open_mouse') {
+            userState[chatId].inMouseMode = true;
+            userState[chatId].mouseX = 640; userState[chatId].mouseY = 360;
+            await drawVirtualCursor(page, userState[chatId].mouseX, userState[chatId].mouseY);
+            const p = path.join(__dirname, `m1_${crypto.randomBytes(2).toString('hex')}.jpg`);
+            await page.screenshot({ path: p, quality: 60, type: 'jpeg' }).catch(()=>{});
+            await bot.sendPhoto(chatId, p, { caption: "🖱️ <b>الماوس النشط:</b> استخدم الأزرار للتحريك، ثم اضغط كليك.", parse_mode: 'HTML', reply_markup: getMouseKb() });
+            if(fs.existsSync(p)) fs.unlinkSync(p);
+            return;
+        }
+
+        if (query.data === 'mouse_close') {
+            userState[chatId].inMouseMode = false;
+            await page.evaluate(() => { const c = document.getElementById('bot-virtual-cursor'); if(c) c.remove(); }).catch(()=>{});
+            bot.sendMessage(chatId, "❌ تم إغلاق الماوس. يمكنك الآن إرسال (تخطي) أو استخدام حقل.");
+            return;
+        }
+
+        if (query.data === 'mouse_click') {
+            await page.evaluate(() => { const c = document.getElementById('bot-virtual-cursor'); if(c) c.style.display = 'none'; }).catch(()=>{});
+            await sleep(100);
+            await page.mouse.click(userState[chatId].mouseX, userState[chatId].mouseY);
+            userState[chatId].scriptLog.push(`  await page.mouse.click(${userState[chatId].mouseX}, ${userState[chatId].mouseY}); // كليك حر بالماوس`);
+            await bot.deleteMessage(chatId, msgId).catch(()=>{});
+            if (userState[chatId].manualResolve) { userState[chatId].manualResolve('MOUSE_CLICKED'); }
+            return;
+        }
+
+        const parts = query.data.split('_'); const dir = parts[1]; const amount = parseInt(parts[2]);
+        if (dir.includes('up')) userState[chatId].mouseY = Math.max(0, userState[chatId].mouseY - amount);
+        if (dir.includes('down')) userState[chatId].mouseY += amount;
+        if (dir.includes('left')) userState[chatId].mouseX = Math.max(0, userState[chatId].mouseX - amount);
+        if (dir.includes('right')) userState[chatId].mouseX += amount;
+
+        await drawVirtualCursor(page, userState[chatId].mouseX, userState[chatId].mouseY);
+        const p = path.join(__dirname, `m2_${crypto.randomBytes(2).toString('hex')}.jpg`);
+        await page.screenshot({ path: p, quality: 50, type: 'jpeg' }).catch(()=>{});
+        
+        try {
+            await bot.editMessageMedia({ type: 'photo', media: fs.createReadStream(p) }, { chat_id: chatId, message_id: msgId, reply_markup: getMouseKb() });
+        } catch (e) {
+            bot.deleteMessage(chatId, msgId).catch(()=>{});
+            await bot.sendPhoto(chatId, p, { caption: `📍 الماوس: X:${userState[chatId].mouseX}, Y:${userState[chatId].mouseY}`, reply_markup: getMouseKb() });
+        }
+        if(fs.existsSync(p)) fs.unlinkSync(p);
+        return;
+    }
+
     if (!userState[chatId]) userState[chatId] = { step: null, cancel: false, context: null };
 
     if (['back_main', 'menu_python', 'menu_settings', 'cancel_all', 'cfg_api'].includes(query.data)) userState[chatId].step = null;
@@ -700,9 +799,7 @@ bot.on('callback_query', async (query) => {
         if (query.data === 'cancel_all') {
             userState[chatId].cancel = true;
             userState[chatId].isLiveStreamActive = false;
-            if (userState[chatId].manualResolve) {
-                userState[chatId].manualResolve('انهاء');
-            }
+            if (userState[chatId].manualResolve) userState[chatId].manualResolve('انهاء');
             if (userState[chatId].context) await userState[chatId].context.close().catch(()=>{});
             bot.sendMessage(chatId, "⏳ تم إيقاف جميع العمليات...");
             isProcessing = false; return;
@@ -766,11 +863,12 @@ bot.on('message', async (msg) => {
     const chatId = msg.chat.id; const text = msg.text?.trim();
     if (!userState[chatId] || !text || text.startsWith('/')) return; 
 
-    // اعتراض أمر التحكم اليدوي (Studio Mode)
+    // اعتراض أوامر التدخل البشري
     if (userState[chatId].step === 'WAIT_MANUAL_COMMAND') {
-        if (userState[chatId].manualResolve) {
-            userState[chatId].manualResolve(text);
+        if (userState[chatId].inMouseMode) {
+            bot.sendMessage(chatId, "⚠️ أنت حالياً في وضع الماوس. اضغط (❌ إغلاق الماوس) من الأزرار لتتمكن من إرسال أوامر نصية."); return;
         }
+        if (userState[chatId].manualResolve) userState[chatId].manualResolve(text);
         return;
     }
 
@@ -779,7 +877,7 @@ bot.on('message', async (msg) => {
         if(parts.length === 4) {
             const num = parts[0].trim(); const mm = parts[1].trim().padStart(2, '0'); const yy = parts[2].trim().slice(-2); const cvc = parts[3].trim();
             globalConfig.ccNumber = num; globalConfig.ccExpiry = `${mm}${yy}`; globalConfig.ccCvc = cvc; saveConfig();
-            bot.sendMessage(chatId, `✅ <b>تم استلام وتحويل الفيزا لـ Stripe بنجاح:</b>\nCard: <code>${num}</code>\nExp: <code>${mm}${yy}</code>\nCVC: <code>${cvc}</code>`, {parse_mode:'HTML'});
+            bot.sendMessage(chatId, `✅ <b>تم استلام وتحويل الفيزا بنجاح:</b>\nCard: <code>${num}</code>\nExp: <code>${mm}${yy}</code>\nCVC: <code>${cvc}</code>`, {parse_mode:'HTML'});
         } else bot.sendMessage(chatId, "❌ تنسيق خاطئ! استخدم الفاصل | كما في المثال.");
         userState[chatId].step = null; return await sendSettingsMenu(chatId);
     }
@@ -814,4 +912,4 @@ bot.on('message', async (msg) => {
 
 process.on('uncaughtException', (err) => console.error('Uncaught:', err.message));
 process.on('unhandledRejection', (reason) => console.error('Unhandled:', reason));
-console.log("🤖 البوت يعمل (الاصدار 40 الأسطوري - بث حي، تحكم تفاعلي ذكي، ومسجل أدوات)...");
+console.log("🤖 البوت يعمل (الاصدار 40 - وضع استوديو RPA، تصوير حي، ماوس، ومسجل أكواد)...");
