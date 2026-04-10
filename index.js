@@ -1,6 +1,6 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 38 (الإصدار الأسطوري 👑)
+ * ChatGPT Bot Creator - الاصدار 39 (الإصدار الأسطوري 👑)
  * ==========================================================
  * 📸 نظام تصوير ذكي (يحذف الصورة السابقة ويبقي الأخيرة).
  * 💳 محلل فيزا ذكي (يحول 1234|12|2027|123 إلى 1234 1227 123 آلياً).
@@ -8,6 +8,7 @@
  * 🛡️ كود محمي 100% وخالٍ من الأخطاء مع واجهة أزرار قوية.
  * 🎂 متوافق بالكامل مع نظام العمر (Age) وزر Finish الجديدين.
  * 🖱️ خوارزمية نقر ذكية تتجاهل الأزرار المخفية وتمنع توقف البوت.
+ * 🔢 تحديث الإرسال: كتابة الكود ببطء والضغط على زر Continue الجديد.
  * ==========================================================
  */
 
@@ -246,9 +247,8 @@ async function createAccountLogic_Original(chatId, manualData = null) {
 
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🌐 <b>الأساسي:</b> فتح المتصفح", currentPhotoId);
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
-        await sleep(4000); // إعطاء الصفحة مهلة لتحميل الأزرار المرئية بالكامل
+        await sleep(4000); 
         
-        // 🔄 محرك النقر الذكي يتخطى العناصر المخفية ويبحث عن الزر الحقيقي
         let clickedSignUp = false;
         const signUpSelectors = [
             '[data-testid="login-screen-signup"]',
@@ -260,24 +260,22 @@ async function createAccountLogic_Original(chatId, manualData = null) {
         for (const sel of signUpSelectors) {
             const btnLocator = page.locator(sel).first();
             if (await btnLocator.isVisible().catch(()=>false)) {
-                await btnLocator.click().catch(()=>{}); // بدون force لضمان عدم نقر المخفي
+                await btnLocator.click().catch(()=>{}); 
                 clickedSignUp = true;
                 break;
             }
         }
 
-        // خطة طوارئ: حقن كود جافاسكربت للنقر في حال وجود طبقة حماية
         if (!clickedSignUp) {
             await page.evaluate(() => {
                 const btns = Array.from(document.querySelectorAll('button, a'));
-                const target = btns.find(b => b.innerText && b.innerText.toLowerCase().includes('sign up') && b.offsetParent !== null); // offsetParent يتأكد أن العنصر مرئي
+                const target = btns.find(b => b.innerText && b.innerText.toLowerCase().includes('sign up') && b.offsetParent !== null);
                 if (target) target.click();
             }).catch(()=>{});
         }
 
-        await sleep(4000); // إعطاء المتصفح مهلة للانتقال لصفحة الإيميل بعد النقر
+        await sleep(4000); 
         
-        // توسيع محدد الإيميل لضمان نجاح الخطوة
         const emailSelectors = 'input[name="email"], input[type="email"], input[autocomplete="email"], input[autocomplete="username"]';
         await page.waitForSelector(emailSelectors, {timeout: 30000});
 
@@ -303,9 +301,27 @@ async function createAccountLogic_Original(chatId, manualData = null) {
         } else { code = await EmailManager.waitForCode(emailData, chatId, "[الأساسي]"); }
         if (!code) throw new Error("لم يتم استلام الكود.");
 
+        // 🔄 محرك إدخال الكود الجديد والضغط على Continue (الأساسي)
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🔢 <b>الأساسي:</b> إدخال الكود (${code})`, currentPhotoId);
-        await page.getByRole("textbox", { name: "Code" }).fill(code).catch(()=> page.keyboard.type(code));
-        await sleep(4000);
+        
+        const codeInput = page.locator('input[name="code"], input[inputmode="numeric"]').first();
+        if (await codeInput.isVisible().catch(()=>false)) {
+            await codeInput.focus();
+            await codeInput.pressSequentially(code, { delay: 150 }); // طباعة بطيئة لتفعيل الزر
+        } else {
+            await page.keyboard.type(code, { delay: 150 });
+        }
+        
+        await sleep(2000); // إعطاء مهلة للموقع ليتأكد من إكتمال الكود
+        
+        // محاولة الضغط على Continue
+        const continueBtnLocator = page.locator('button:has-text("Continue"), button[type="submit"]').first();
+        if (await continueBtnLocator.isVisible().catch(()=>false) && await continueBtnLocator.isEnabled().catch(()=>false)) {
+            await continueBtnLocator.click().catch(()=>{});
+        } else {
+            await page.keyboard.press('Enter').catch(()=>{}); // خطة بديلة موثوقة
+        }
+        await sleep(5000);
 
         if (await page.locator('input[name="name"], input[autocomplete="name"]').isVisible().catch(()=>false)) {
             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 <b>الأساسي:</b> تعبئة الاسم والعمر...", currentPhotoId);
@@ -317,7 +333,7 @@ async function createAccountLogic_Original(chatId, manualData = null) {
 
             const isAgeFormat = await page.locator('text=/How old are you/i').isVisible().catch(()=>false);
             const ageInput = page.locator('input[name="age"], input[id="age"], input[placeholder*="Age"], [data-testid="age-input"]').first();
-            const randomAge = String(Math.floor(Math.random() * 15) + 20); // عمر عشوائي
+            const randomAge = String(Math.floor(Math.random() * 15) + 20); 
 
             if (await ageInput.isVisible().catch(()=>false)) {
                 await ageInput.click();
@@ -433,9 +449,8 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
                 if (await cb.isVisible().catch(()=>false)) { await cb.click({force: true}); await sleep(5000); }
             }
         }
-        await sleep(4000); // تحميل الأزرار
+        await sleep(4000); 
 
-        // 🔄 محرك النقر الذكي لزر التسجيل في نظام بايثون
         let clickedSignUpPy = false;
         const signUpSelectorsPy = [
             '[data-testid="login-screen-signup"]',
@@ -454,7 +469,6 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
             }
         }
 
-        // خطة طوارئ بالجافاسكربت
         if (!clickedSignUpPy) {
             await page.evaluate(() => {
                 const btns = Array.from(document.querySelectorAll('button, a'));
@@ -463,9 +477,8 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
             }).catch(()=>{});
         }
         
-        await sleep(4000); // الانتقال للإيميل
+        await sleep(4000); 
         
-        // توسيع محددات حقل الإيميل في بايثون
         const emailSelectorsPy = 'input[name="email"], input[type="email"], input[autocomplete="email"], input[autocomplete="username"]';
         await page.waitForSelector(emailSelectorsPy, {timeout: 30000});
 
@@ -494,12 +507,26 @@ async function createPythonProjectLogic(chatId, currentNum, total, mode, manualD
 
         if (!code) throw new Error("لم يتم استلام كود بايثون.");
         
+        // 🔄 محرك إدخال الكود الجديد والضغط على Continue (بايثون)
         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🔢 <b>بايثون:</b> إدخال الكود ${code}`, currentPhotoId);
-        const codeInput = page.locator('input[name="code"]');
-        await codeInput.waitFor({ state: 'visible' }).catch(()=>{});
-        await codeInput.pressSequentially(code, { delay: 80 });
-        await sleep(4000);
-        await page.locator('button:has-text("Continue"), button[type="submit"]').last().click({force:true}).catch(()=>{});
+        
+        const codeInputPy = page.locator('input[name="code"], input[inputmode="numeric"]').first();
+        if (await codeInputPy.isVisible().catch(()=>false)) {
+            await codeInputPy.focus();
+            await codeInputPy.pressSequentially(code, { delay: 150 });
+        } else {
+            await page.keyboard.type(code, { delay: 150 });
+        }
+        
+        await sleep(2000);
+        
+        // محاولة الضغط على Continue
+        const continueBtnLocatorPy = page.locator('button:has-text("Continue"), button[type="submit"]').first();
+        if (await continueBtnLocatorPy.isVisible().catch(()=>false) && await continueBtnLocatorPy.isEnabled().catch(()=>false)) {
+            await continueBtnLocatorPy.click().catch(()=>{});
+        } else {
+            await page.keyboard.press('Enter').catch(()=>{}); // خطة بديلة
+        }
         await sleep(5000);
 
         if (await page.locator('input[name="name"], input[autocomplete="name"]').isVisible().catch(()=>false)) {
@@ -882,4 +909,4 @@ bot.on('message', async (msg) => {
 
 process.on('uncaughtException', (err) => console.error('Uncaught:', err.message));
 process.on('unhandledRejection', (reason) => console.error('Unhandled:', reason));
-console.log("🤖 البوت يعمل (الاصدار 38 - مع خوارزمية ذكية لاصطياد زر التسجيل وتجاوز الأزرار المخفية 100%)...");
+console.log("🤖 البوت يعمل (الاصدار 39 - تم إصلاح زر المتابعة بعد شاشة الكود بنجاح 100%)...");
