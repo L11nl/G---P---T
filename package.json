@@ -9,10 +9,13 @@
   },
   "dependencies": {
     "node-telegram-bot-api": "^0.66.0",
-    "puppeteer": "^22.0.0",
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",
-    "winston": "^3.13.0"
+    "winston": "^3.13.0",
+    "playwright": "^1.59.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "@faker-js/faker": "^10.3.0"
   },
   "engines": {
     "node": ">=18.0.0"
