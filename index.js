@@ -3,8 +3,9 @@
  * ChatGPT 2FA Automator & Playwright Script Generator
  * ==========================================================
  * - تم حل مشكلة تحديث العمر (Age) وكتابة 25 والضغط على Finish.
- * - [تحديث]: إصلاح نظام المربعات الشفافة واسترجاع الشكل الأحمر الواضح (100 مربع).
- * - إضافة مهلة زمنية (Delay) لضمان رسم الشبكة قبل التصوير (تجنب الشاشة الفارغة).
+ * - [تحديث دقيق]: استرجاع تصميم الشبكة الشفافة الأصلي (20x15 = 300 مربع) 
+ *   بحدود صفراء وأرقام سوداء بظل أبيض كما في الصورة المرفقة تماماً.
+ * - إضافة مهلة زمنية (Delay) لضمان رسم الشبكة بالكامل قبل التصوير.
  * - أداة توليد أكواد برمجية دقيقة (Playwright Code Builder).
  * - نظام تفاعلي قوي: بحث عن نصوص وضغطها برمجياً + كيبورد + كليك.
  * ==========================================================
@@ -109,12 +110,11 @@ async function sendStepPhoto(page, chatId, caption, previousPhotoId = null) {
 }
 
 // ================= أنظمة المربعات الشفافة الدقيقة =================
-const GRID_COLS = 10;
-const GRID_ROWS = 10;
-const TOTAL_CELLS = 100; // 100 مربع 10x10 ليكون واضحاً
+const GRID_COLS = 20;
+const GRID_ROWS = 15;
+const TOTAL_CELLS = 300; 
 
 async function drawGridAndScreenshot(page, chatId, caption) {
-    // 1- رسم المربعات بوضوح وباللون الأحمر
     await page.evaluate(({cols, rows}) => {
         const existing = document.getElementById('bot-grid-overlay');
         if (existing) existing.remove();
@@ -126,43 +126,43 @@ async function drawGridAndScreenshot(page, chatId, caption) {
         grid.style.left = '0';
         grid.style.width = '100vw';
         grid.style.height = '100vh';
-        grid.style.pointerEvents = 'none'; // لكي لا يمنع النقرات
-        grid.style.zIndex = '2147483647'; // أعلى طبقة ممكنة للظهور فوق النوافذ المنبثقة
+        grid.style.pointerEvents = 'none'; 
+        grid.style.zIndex = '2147483647'; // طبقة عليا ليظهر فوق كل شيء
         grid.style.display = 'grid';
         grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
         grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
         
         for (let i = 0; i < cols * rows; i++) {
             const cell = document.createElement('div');
-            cell.style.border = '1px solid rgba(255, 0, 0, 0.5)';
-            cell.style.backgroundColor = 'rgba(255, 0, 0, 0.05)';
+            // التصميم القديم بالضبط (كما في الصورة): خطوط صفراء، أرقام سوداء، ظل أبيض.
+            cell.style.border = '1px solid rgba(255, 255, 0, 0.4)';
+            cell.style.backgroundColor = 'transparent';
             cell.style.display = 'flex';
             cell.style.alignItems = 'center';
             cell.style.justifyContent = 'center';
-            cell.style.color = 'red'; // الخط الأحمر الواضح
-            cell.style.fontSize = '24px'; // خط كبير وواضح
+            cell.style.color = 'black';
+            cell.style.fontSize = '12px';
             cell.style.fontWeight = 'bold';
-            cell.style.textShadow = '1px 1px 0px white, -1px -1px 0px white';
+            cell.style.fontFamily = 'Arial, sans-serif';
+            cell.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
             cell.innerText = i.toString();
             grid.appendChild(cell);
         }
         document.body.appendChild(grid);
     }, {cols: GRID_COLS, rows: GRID_ROWS});
 
-    // 2- تأخير لضمان رندر (Render) المتصفح للشبكة بالكامل قبل التصوير
+    // تأخير لضمان رسم المتصفح للشبكة بالكامل قبل التصوير
     await sleep(800);
 
-    // 3- التقاط الصورة للشبكة
     const p = path.join(__dirname, `grid_${Date.now()}.png`);
     await page.screenshot({ path: p });
 
-    // 4- إزالة الشبكة فوراً كي لا تتداخل مع النقرات البرمجية اللاحقة
+    // إزالة الشبكة فوراً كي لا تتداخل مع النقرات البرمجية اللاحقة
     await page.evaluate(() => {
         const grid = document.getElementById('bot-grid-overlay');
         if (grid) grid.remove();
     });
 
-    // 5- إرسال الصورة
     await bot.sendPhoto(chatId, p, { caption: caption, parse_mode: 'Markdown' });
     if (fs.existsSync(p)) fs.unlinkSync(p);
 }
@@ -173,7 +173,7 @@ async function drawRedDot(page, x, y) {
         if (!dot) {
             dot = document.createElement('div');
             dot.id = 'bot-red-dot';
-            dot.style.cssText = 'position:fixed;width:16px;height:16px;background-color:red;border:3px solid white;border-radius:50%;z-index:2147483647;pointer-events:none;box-shadow:0 0 5px #000;transform:translate(-50%, -50%);';
+            dot.style.cssText = 'position:fixed;width:14px;height:14px;background-color:red;border:2px solid white;border-radius:50%;z-index:2147483647;pointer-events:none;box-shadow:0 0 5px #000;transform:translate(-50%, -50%);';
             document.body.appendChild(dot);
         }
         dot.style.left = pos.x + 'px';
@@ -704,4 +704,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت المطور جاهز (تم إصلاح شبكة المربعات الشفافة بنجاح)...");
+console.log("🤖 البوت المطور جاهز (تم إرجاع تصميم الشبكة الأصلي بنجاح 100%)...");
