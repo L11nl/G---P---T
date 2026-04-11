@@ -114,53 +114,51 @@ const GRID_ROWS = 15;
 const TOTAL_CELLS = GRID_COLS * GRID_ROWS; // 300 مربع
 
 async function drawGridAndScreenshot(page, chatId, caption) {
-    await page.evaluate(({ cols, rows }) => {
-        const oldGrid = document.getElementById('bot-grid-overlay');
-        if (oldGrid) oldGrid.remove();
-
-        const grid = document.createElement('div');
-        grid.id = 'bot-grid-overlay';
-        grid.style.position = 'fixed';
-        grid.style.top = '0';
-        grid.style.left = '0';
-        grid.style.width = '100vw';
-        grid.style.height = '100vh';
-        grid.style.pointerEvents = 'none';
-        grid.style.zIndex = '2147483647';
-        grid.style.display = 'grid';
-        grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-        grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-
-        for (let i = 0; i < cols * rows; i++) {
-            const cell = document.createElement('div');
-            cell.style.border = '1px solid rgba(255,255,0,0.7)';
-            cell.style.background = 'rgba(0,0,0,0.18)';
-            cell.style.display = 'flex';
-            cell.style.alignItems = 'center';
-            cell.style.justifyContent = 'center';
-            cell.style.color = '#fff';
-            cell.style.fontSize = '12px';
-            cell.style.fontWeight = 'bold';
-            cell.style.textShadow = '1px 1px 2px #000, -1px -1px 2px #000';
-            cell.textContent = String(i);
-            grid.appendChild(cell);
-        }
-
-        document.documentElement.appendChild(grid);
-    }, { cols: GRID_COLS, rows: GRID_ROWS });
-
-    await page.waitForSelector('#bot-grid-overlay', { state: 'attached', timeout: 3000 });
-    await page.waitForTimeout(300);
-
     const p = path.join(__dirname, `grid_${Date.now()}.png`);
+
     await page.screenshot({ path: p });
 
-    await page.evaluate(() => {
-        const grid = document.getElementById('bot-grid-overlay');
-        if (grid) grid.remove();
-    });
+    const { createCanvas, loadImage } = require('canvas');
+    const img = await loadImage(p);
+    const canvas = createCanvas(img.width, img.height);
+    const ctx = canvas.getContext('2d');
 
-    await bot.sendPhoto(chatId, p, { caption: caption, parse_mode: 'Markdown' });
+    ctx.drawImage(img, 0, 0);
+
+    const cellW = img.width / GRID_COLS;
+    const cellH = img.height / GRID_ROWS;
+
+    for (let row = 0; row < GRID_ROWS; row++) {
+        for (let col = 0; col < GRID_COLS; col++) {
+            const i = row * GRID_COLS + col;
+            const x = col * cellW;
+            const y = row * cellH;
+
+            ctx.fillStyle = 'rgba(0,0,0,0.12)';
+            ctx.fillRect(x, y, cellW, cellH);
+
+            ctx.strokeStyle = 'rgba(255,255,0,0.75)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, y, cellW, cellH);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px Sans';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            const tx = x + cellW / 2;
+            const ty = y + cellH / 2;
+
+            ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+            ctx.lineWidth = 3;
+            ctx.strokeText(String(i), tx, ty);
+            ctx.fillText(String(i), tx, ty);
+        }
+    }
+
+    fs.writeFileSync(p, canvas.toBuffer('image/png'));
+
+    await bot.sendPhoto(chatId, p, { caption, parse_mode: 'Markdown' });
     if (fs.existsSync(p)) fs.unlinkSync(p);
 }
 
