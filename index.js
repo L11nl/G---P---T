@@ -2,9 +2,10 @@
  * ==========================================================
  * ChatGPT 2FA Automator & Playwright Script Generator
  * ==========================================================
- * - [الرادار القناص 🧠] آلة حالة تقرأ الشاشة وتتخذ قرارات حسب الأولويات.
- * - [تعبئة ذكية 👤] توليد أسماء حقيقية وتعبئة العمر آلياً إن ظهرت الخانات.
- * - [تخطي إجباري ⏭️] قنص كلمات (Skip, Tour, Done) بالـ JS Injection.
+ * - [رادار Regex ذكي 🧠] يصطاد (skip, okay, next..) مهما كان حجم الحروف أو الكلمات المجاورة!
+ * - [محلل خانات ذكي 👤] يفرق بين (Age -> 25) و (Birthday -> 01/01/2000) بدقة تامة.
+ * - [أسماء حقيقية] يولد أسماء أجنبية مختلفة في كل عملية.
+ * - [تخطي إجباري ⏭️] قنص النوافذ الوهمية بالـ JS Injection.
  * - أتمتة قطعية 100%: أدخل الإيميل وكود البريد، ثم استلم الحساب جاهزاً!
  * - تسليم الحساب بصيغة نظيفة: ايميل / باسورد / رمز / رابط 2FA.
  * - توثيق كامل مستمر وتصوير الشاشة.
@@ -63,7 +64,7 @@ class PlaywrightCodeGenerator {
         this.lastCommand = linesArr[linesArr.length - 1];
     }
     getFinalScript() {
-        return `// ==========================================\n// 🤖 سكربت Playwright التحليلي (مدعم بالرادار القناص 🧠)\n// ==========================================\n\nconst { chromium } = require('playwright');\n\n(async () => {\n    const browser = await chromium.launch({ headless: false });\n    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });\n    const page = await context.newPage();\n${this.codeLines.join('\n')}\n\n    // await browser.close();\n})();`;
+        return `// ==========================================\n// 🤖 سكربت Playwright التحليلي (مدعم بالرادار القناص Regex 🧠)\n// ==========================================\n\nconst { chromium } = require('playwright');\n\n(async () => {\n    const browser = await chromium.launch({ headless: false });\n    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });\n    const page = await context.newPage();\n${this.codeLines.join('\n')}\n\n    // await browser.close();\n})();`;
     }
 }
 
@@ -280,7 +281,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 };
                 bot.on('message', listener);
             });
-            await updateStatus("✅ تم استلام الكود. الرادار الشامل سيتولى القيادة الآن، اترك الهاتف تماماً! 🚀");
+            await updateStatus("✅ تم استلام الكود. الرادار الفائق سيتولى القيادة الآن، اترك الهاتف تماماً! 🚀");
         } else {
             await updateStatus("في انتظار صفحة الكود...");
             code = await waitForMailTmCode(email, mailToken, chatId, 100);
@@ -296,57 +297,90 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             await sendStepPhoto(page, chatId, `📨 تمت كتابة الكود: ${code}`);
         }
 
+        const continueBtnAfterCode = page.locator('button:has-text("Continue") >> visible=true').last();
+        if (await continueBtnAfterCode.isVisible().catch(()=>false)) await continueBtnAfterCode.click({ force: true });
+        else await page.keyboard.press('Enter');
+        await sleep(5000); 
+
         userState[chatId].accountInfo = { email: email, password: chatGptPassword };
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), `${email}|${chatGptPassword}\n`);
 
-        await sendStepPhoto(page, chatId, "🛸 تفعيل الرادار القناص (Sniper Radar) لمسح الخانات وتدمير النوافذ...");
+        await sendStepPhoto(page, chatId, "🛸 تفعيل الرادار القناص (Regex Radar) لمسح الخانات وتدمير النوافذ...");
 
         // =========================================================================================
-        // 🧠 الرادار القطعي الشامل (The Ultimate Omniscient Radar)
+        // 🧠 الرادار القطعي الشامل (The Ultimate Regex Radar - Cognitive AI)
         // =========================================================================================
-        codeGen.addRawBlock("الرادار القطعي: يعبئ البيانات أولاً، يدمر النوافذ بالـ JS Injection، ويصل لـ 2FA", [
+        codeGen.addRawBlock("الرادار القطعي بالـ Regex: يفرق بين Age و Birthday، ويقنص الكلمات مهما كان النص حولها", [
             `let radarActive = true;`,
             `let radarAttempts = 0;`,
             `let secretCodeFinal = null;`,
-            `while (radarActive && radarAttempts < 40) {`,
+            `while (radarActive && radarAttempts < 45) {`,
             `    radarAttempts++;`,
             `    await page.waitForTimeout(2000);`,
-            `    // 1. أولوية قصوى: هل توجد خانة اسم (تعبئة البيانات)؟`,
-            `    const nameBox = page.locator('input[name="fullname"], input[name="Full name"], input[name="name"], [aria-label*="name" i], [placeholder*="name" i]').first();`,
+            `    let filledData = false;`,
+            `    `,
+            `    // 1. أولوية قصوى: تعبئة البيانات الشخصية`,
+            `    const nameBox = page.locator('input[name*="name" i], [aria-label*="name" i], [placeholder*="name" i], input[autocomplete="name"]').first();`,
             `    if (await nameBox.isVisible().catch(()=>false)) {`,
-            `        const firstNames = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "Emma", "Olivia", "Ava", "Isabella", "Sophia", "Mia", "Amelia", "Harper"];`,
-            `        const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"];`,
+            `        const firstNames = ["James", "John", "Robert", "Michael", "Emma", "Olivia", "Ava", "Sophia"];`,
+            `        const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller"];`,
             `        const randomName = firstNames[Math.floor(Math.random() * firstNames.length)] + " " + lastNames[Math.floor(Math.random() * lastNames.length)];`,
-            `        await nameBox.fill(randomName);`,
-            `        const bdayBox = page.locator('input[name="birthday"], input[placeholder*="birthday" i], [aria-label*="birthday" i]').first();`,
-            `        if (await bdayBox.isVisible().catch(()=>false)) {`,
-            `            await bdayBox.focus(); await bdayBox.click();`,
-            `            await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');`,
-            `            await page.keyboard.type("01012000", { delay: 100 });`,
-            `        } else { await page.keyboard.press('Tab'); await page.keyboard.type("25", { delay: 100 }); }`,
-            `        const contBtn = page.locator('button:has-text("Continue"), button:has-text("Agree")').first();`,
+            `        await nameBox.fill(randomName); await page.waitForTimeout(500); filledData = true;`,
+            `    }`,
+            `    const ageBox = page.locator('input[name*="age" i], [aria-label*="age" i], [placeholder*="age" i]').first();`,
+            `    const bdayBox = page.locator('input[name*="birth" i], [aria-label*="birth" i], [placeholder*="birth" i], input[type="date"]').first();`,
+            `    if (await ageBox.isVisible().catch(()=>false)) {`,
+            `        await ageBox.focus(); await ageBox.click();`,
+            `        await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');`,
+            `        await page.keyboard.type("25", { delay: 100 }); filledData = true;`,
+            `    } else if (await bdayBox.isVisible().catch(()=>false)) {`,
+            `        await bdayBox.focus(); await bdayBox.click();`,
+            `        await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');`,
+            `        await page.keyboard.type("01/01/2000", { delay: 100 }); filledData = true;`,
+            `    } else if (!filledData) {`,
+            `        // الاستنتاج من الشاشة إذا لم يكن هناك اسم واضح للحقل`,
+            `        const genericInput = page.locator('input[type="text"], input:not([type="hidden"])').first();`,
+            `        if (await genericInput.isVisible().catch(()=>false)) {`,
+            `            const pageText = await page.innerText('body').catch(()=>'');`,
+            `            if (pageText.match(/\\bage\\b/i)) {`,
+            `                await genericInput.focus(); await genericInput.click();`,
+            `                await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');`,
+            `                await page.keyboard.type("25", { delay: 100 }); filledData = true;`,
+            `            } else if (pageText.match(/\\bbirth/i)) {`,
+            `                await genericInput.focus(); await genericInput.click();`,
+            `                await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');`,
+            `                await page.keyboard.type("01/01/2000", { delay: 100 }); filledData = true;`,
+            `            }`,
+            `        }`,
+            `    }`,
+            `    if (filledData) {`,
+            `        const contBtn = page.locator('text=/continue/i >> visible=true, text=/agree/i >> visible=true, text=/next/i >> visible=true').first();`,
             `        if (await contBtn.isVisible().catch(()=>false)) await contBtn.evaluate(n=>n.click()).catch(()=>contBtn.click({force: true}));`,
             `        else await page.keyboard.press('Enter');`,
             `        continue;`,
             `    }`,
+            `    `,
             `    // 2. هل ظهر الكود 32 حرف؟`,
             `    const pageText = await page.innerText('body').catch(()=>'');`,
             `    const secretMatch = pageText.match(/\\b[A-Z2-7]{32}\\b/);`,
             `    if (secretMatch) { secretCodeFinal = secretMatch[0]; radarActive = false; break; }`,
-            `    // 3. هل يوجد زر إظهار الكود (Trouble scanning)؟`,
-            `    const troubleBtn = page.locator(':text-is("Trouble scanning?") >> visible=true, text="Trouble scanning?" >> visible=true').first();`,
+            `    `,
+            `    // 3. هل يوجد زر إظهار الكود (Trouble scanning Regex)؟`,
+            `    const troubleBtn = page.locator('text=/trouble scanning/i >> visible=true').first();`,
             `    if (await troubleBtn.isVisible().catch(()=>false)) { await troubleBtn.evaluate(node => node.click()).catch(()=>troubleBtn.click({ force: true })); continue; }`,
-            `    // 4. قنص النوافذ الاستبيانية (استهداف النصوص بغض النظر عن نوع العنصر)`,
-            `    const skipBtns = ["Skip Tour", "Skip", "Okay", "Done", "Continue", "Next"];`,
+            `    `,
+            `    // 4. قنص النوافذ الاستبيانية باستخدام Regex قوي يتجاهل المسافات وحالة الأحرف`,
+            `    const skipRegexes = [/skip/i, /okay/i, /done/i, /continue/i, /next/i];`,
             `    let clickedPopup = false;`,
-            `    for (const txt of skipBtns) {`,
-            `        const btn = page.locator(\`button:has-text("\${txt}") >> visible=true, a:has-text("\${txt}") >> visible=true, :text-is("\${txt}") >> visible=true\`).first();`,
+            `    for (const rx of skipRegexes) {`,
+            `        const btn = page.locator(\`text=\${rx} >> visible=true\`).first();`,
             `        if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {`,
             `            await btn.evaluate(node => node.click()).catch(() => btn.click({ force: true }));`,
             `            clickedPopup = true; break;`,
             `        }`,
             `    }`,
             `    if (clickedPopup) continue;`,
+            `    `,
             `    // 5. التوجيه لصفحة الأمان إذا خلت الشاشة`,
             `    const currentUrl = page.url();`,
             `    if (currentUrl === 'https://chatgpt.com/' || currentUrl.includes('chatgpt.com/?') || currentUrl.includes('/chat')) {`,
@@ -361,7 +395,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             `            const checked = await authToggle.getAttribute('aria-checked');`,
             `            if (checked !== 'true') await authToggle.click({force:true});`,
             `        } else {`,
-            `            const appBtn = page.locator(':text-is("Authenticator app") >> visible=true, text="Authenticator app" >> visible=true').first();`,
+            `            const appBtn = page.locator('text=/authenticator app/i >> visible=true').first();`,
             `            if (await appBtn.isVisible().catch(()=>false)) await appBtn.evaluate(n=>n.click()).catch(()=>appBtn.click({force:true}));`,
             `        }`,
             `    }`,
@@ -372,40 +406,72 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         let radarAttempts = 0;
         let secretCodeFinal = null;
 
-        while (radarActive && radarAttempts < 40) {
+        while (radarActive && radarAttempts < 45) {
             checkCancel();
             radarAttempts++;
             await sleep(2000);
+            
+            let filledData = false;
+            let reportStr = "";
 
-            // 1. أولوية قصوى: تعبئة البيانات الشخصية (يمنع المتصفح من التعليق)
-            const nameBox = page.locator('input[name="fullname"], input[name="Full name"], input[name="name"], [aria-label*="name" i], [placeholder*="name" i]').first();
-            if (await nameBox.isVisible({ timeout: 1000 }).catch(()=>false)) {
-                const firstNames = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "Emma", "Olivia", "Ava", "Isabella", "Sophia", "Mia", "Amelia", "Harper"];
+            // 1. أولوية قصوى: تعبئة البيانات الشخصية (الاسم، والتمييز بين Age و Birthday بذكاء)
+            const nameBox = page.locator('input[name*="name" i], [aria-label*="name" i], [placeholder*="name" i], input[autocomplete="name"]').first();
+            if (await nameBox.isVisible({ timeout: 500 }).catch(()=>false)) {
+                const firstNames = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Emma", "Olivia", "Sophia", "Mia", "Amelia", "Harper"];
                 const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"];
                 const randomName = firstNames[Math.floor(Math.random() * firstNames.length)] + " " + lastNames[Math.floor(Math.random() * lastNames.length)];
-                
-                await nameBox.fill(randomName);
+                await nameBox.focus().catch(()=>{}); await nameBox.click({ force: true }).catch(()=>{});
+                await page.keyboard.press('Control+A').catch(()=>{}); await page.keyboard.press('Backspace').catch(()=>{});
+                await page.keyboard.type(randomName, { delay: 50 });
+                reportStr += ` اسم (${randomName}) `;
+                filledData = true;
                 await sleep(500);
-                
-                const bdayBox = page.locator('input[name="birthday"], [aria-label*="birthday" i], [placeholder*="birthday" i]').first();
-                if (await bdayBox.isVisible({ timeout: 1000 }).catch(()=>false)) {
-                    await bdayBox.focus().catch(()=>{}); await bdayBox.click({ force: true }).catch(()=>{});
-                    await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');
-                    await page.keyboard.type("01012000", { delay: 100 });
-                } else {
-                    await page.keyboard.press('Tab');
-                    await page.keyboard.type("25", { delay: 100 });
+            }
+
+            const ageBox = page.locator('input[name*="age" i], [aria-label*="age" i], [placeholder*="age" i]').first();
+            const bdayBox = page.locator('input[name*="birth" i], [aria-label*="birth" i], [placeholder*="birth" i], input[type="date"], input[placeholder*="YYYY" i]').first();
+            
+            if (await ageBox.isVisible({ timeout: 500 }).catch(()=>false)) {
+                await ageBox.focus().catch(()=>{}); await ageBox.click({ force: true }).catch(()=>{});
+                await page.keyboard.press('Control+A').catch(()=>{}); await page.keyboard.press('Backspace').catch(()=>{});
+                await page.keyboard.type("25", { delay: 50 });
+                reportStr += ` وعمر (25) `;
+                filledData = true;
+            } else if (await bdayBox.isVisible({ timeout: 500 }).catch(()=>false)) {
+                await bdayBox.focus().catch(()=>{}); await bdayBox.click({ force: true }).catch(()=>{});
+                await page.keyboard.press('Control+A').catch(()=>{}); await page.keyboard.press('Backspace').catch(()=>{});
+                await page.keyboard.type("01/01/2000", { delay: 50 });
+                reportStr += ` وتاريخ ميلاد (01/01/2000) `;
+                filledData = true;
+            } else if (!filledData) {
+                // استنتاج ذكي من الشاشة إذا كانت الخانة غير مسماة بوضوح ولكنها ظاهرة
+                const genericInput = page.locator('input[type="text"], input:not([type="hidden"])').first();
+                if (await genericInput.isVisible({ timeout: 500 }).catch(()=>false)) {
+                    const pageText = await page.innerText('body').catch(()=>'');
+                    if (pageText.match(/\bage\b/i)) {
+                        await genericInput.focus().catch(()=>{}); await genericInput.click({ force: true }).catch(()=>{});
+                        await page.keyboard.press('Control+A').catch(()=>{}); await page.keyboard.press('Backspace').catch(()=>{});
+                        await page.keyboard.type("25", { delay: 50 });
+                        reportStr += ` وعمر (25) بالاستنتاج `;
+                        filledData = true;
+                    } else if (pageText.match(/\bbirth/i) || pageText.match(/\bdob\b/i)) {
+                        await genericInput.focus().catch(()=>{}); await genericInput.click({ force: true }).catch(()=>{});
+                        await page.keyboard.press('Control+A').catch(()=>{}); await page.keyboard.press('Backspace').catch(()=>{});
+                        await page.keyboard.type("01/01/2000", { delay: 50 });
+                        reportStr += ` وميلاد (01/01/2000) بالاستنتاج `;
+                        filledData = true;
+                    }
                 }
-                
-                await sendStepPhoto(page, chatId, `👤 الرادار: وجدت خانات بيانات وتم تعبئة اسم عشوائي حقيقي (${randomName}) وتاريخ الميلاد.`);
-                
-                const contBtn = page.locator('button:has-text("Continue"), button:has-text("Agree")').first();
+            }
+
+            if (filledData) {
+                await sendStepPhoto(page, chatId, `👤 الرادار: وجدت خانات بيانات وتم تعبئة:${reportStr}`);
+                const contBtn = page.locator('text=/continue/i >> visible=true, text=/agree/i >> visible=true, text=/next/i >> visible=true, text=/submit/i >> visible=true').first();
                 if (await contBtn.isVisible().catch(()=>false)) {
                     await contBtn.evaluate(n => n.click()).catch(() => contBtn.click({ force: true }));
                 } else {
                     await page.keyboard.press('Enter');
                 }
-                
                 await sleep(2000);
                 continue; 
             }
@@ -419,27 +485,26 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 break;
             }
 
-            // 3. هل زر إظهار الكود موجود (Trouble scanning)؟
-            const troubleBtn = page.locator(':text-is("Trouble scanning?") >> visible=true, text="Trouble scanning?" >> visible=true').first();
+            // 3. هل زر إظهار الكود موجود (Trouble scanning Regex)؟
+            const troubleBtn = page.locator('text=/trouble scanning/i >> visible=true').first();
             if (await troubleBtn.isVisible({ timeout: 500 }).catch(()=>false)) {
                 await troubleBtn.evaluate(node => node.click()).catch(() => troubleBtn.click({ force: true }));
                 await sleep(1500);
-                await sendStepPhoto(page, chatId, '🎯 الرادار: تم العثور على Trouble scanning والضغط عليه بقوة JS.');
+                await sendStepPhoto(page, chatId, '🎯 الرادار: تم العثور على Trouble scanning بالبحث الجزئي (Regex) والضغط عليه.');
                 continue;
             }
 
-            // 4. القناص الشامل: صيد الكلمات المفتاحية بالترتيب الماكر (Skip قبل Next)
-            const skipBtns = ["Skip Tour", "Skip", "Okay", "Done", "Continue", "Next"];
+            // 4. القناص الشامل: صيد الكلمات المفتاحية بالـ Regex (تجاهل الأحرف والنصوص المجاورة)
+            // text=/word/i سيعثر على (Skip, skip, Just skip this, okay, Okay, OKAY) أينما كانت
+            const skipRegexes = [/skip/i, /okay/i, /done/i, /continue/i, /next/i];
             let clickedPopup = false;
-            for (const txt of skipBtns) {
+            for (const rx of skipRegexes) {
                 try {
-                    // هذا الكود يبحث عن النص سواء كان زراً أو رابطاً أو نصاً عادياً (مثل صورتك رقم 30)
-                    const btn = page.locator(`button:has-text("${txt}") >> visible=true, a:has-text("${txt}") >> visible=true, :text-is("${txt}") >> visible=true`).first();
+                    const btn = page.locator(`text=${rx} >> visible=true`).first();
                     if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
-                        // تكتيك الحقن القسري لتخطي حماية العناصر غير القابلة للنقر
                         await btn.evaluate(node => node.click()).catch(() => btn.click({ force: true }));
                         await sleep(1500);
-                        await sendStepPhoto(page, chatId, `⏭️ القناص: تم قنص الكلمة وتدمير النافذة بالضغط القسري على: "${txt}"`);
+                        await sendStepPhoto(page, chatId, `⏭️ القناص (Regex): تم قنص وتدمير النافذة لوجود الكلمة المطابقة للنمط: "${rx.toString()}"`);
                         clickedPopup = true;
                         break; 
                     }
@@ -456,7 +521,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 continue;
             }
 
-            // 6. الإحداثيات السحرية في صفحة الأمان
+            // 6. الإحداثيات السحرية في صفحة Security
             if (currentUrl.includes('#settings/Security')) {
                 if (radarAttempts % 4 === 0) {
                     try { await page.mouse.click(986.56, 353.28); } catch(e){}
@@ -464,10 +529,10 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 const authToggle = page.locator('button[role="switch"]').last();
                 if (await authToggle.isVisible().catch(()=>false)) {
                     const checked = await authToggle.getAttribute('aria-checked');
-                    if (checked !== 'true') await authToggle.click({force:true});
+                    if (checked !== 'true') await authToggle.click({force:true}).catch(()=>{});
                 } else {
-                    const appBtn = page.locator(':text-is("Authenticator app") >> visible=true, text="Authenticator app" >> visible=true').first();
-                    if (await appBtn.isVisible().catch(()=>false)) await appBtn.evaluate(n=>n.click()).catch(()=>appBtn.click({force:true}));
+                    const appBtn = page.locator('text=/authenticator app/i >> visible=true').first();
+                    if (await appBtn.isVisible().catch(()=>false)) await appBtn.click({force:true}).catch(()=>{});
                 }
             }
         }
@@ -493,7 +558,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                     `    if (await codeInput.isVisible()) await codeInput.fill(code6);`,
                     `    else await page.keyboard.type(code6, { delay: 100 });`,
                     `    await page.waitForTimeout(1500);`,
-                    `    const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable")').first();`,
+                    `    const enableBtn = page.locator('text=/verify/i >> visible=true, text=/enable/i >> visible=true').first();`,
                     `    if (await enableBtn.isVisible()) await enableBtn.evaluate(n=>n.click()).catch(()=>enableBtn.click());`,
                     `    else await page.keyboard.press('Enter');`,
                     `}`
@@ -520,7 +585,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 await sleep(1500);
                 await sendStepPhoto(page, chatId, `⌨️ تم لصق كود التحقق 6 أرقام: ${code6}`);
                 
-                const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable")').first();
+                const enableBtn = page.locator('text=/verify/i >> visible=true, text=/enable/i >> visible=true').first();
                 if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.evaluate(n=>n.click()).catch(()=>enableBtn.click());
                 else await page.keyboard.press('Enter');
                 
@@ -574,7 +639,7 @@ function sendMainMenu(chatId) {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
-                [{ text: '▶️ إنشاء حساب آلي (الرادار القطعي)', callback_data: 'create_auto' }],
+                [{ text: '▶️ إنشاء حساب آلي (الرادار Regex)', callback_data: 'create_auto' }],
                 [{ text: '✍️ تشغيل مخصص (إدخال إيميل وكود -> أتمتة شاملة)', callback_data: 'create_manual' }],
                 [{ text: '🛑 إلغاء العملية', callback_data: 'cancel' }]
             ]
@@ -609,7 +674,7 @@ bot.on('callback_query', async (query) => {
                 let secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
                 
                 if (!secretMatch) {
-                    const troubleBtn = state.page.locator(':text-is("Trouble scanning?") >> visible=true, text="Trouble scanning?" >> visible=true').first();
+                    const troubleBtn = state.page.locator('text=/trouble scanning/i >> visible=true').first();
                     if (await troubleBtn.isVisible().catch(()=>false)) {
                         await troubleBtn.evaluate(n=>n.click()).catch(()=>troubleBtn.click());
                         await sleep(1500);
@@ -641,7 +706,7 @@ bot.on('callback_query', async (query) => {
                         
                         await sleep(1500);
                         
-                        const enableBtn = state.page.locator('button:has-text("Verify"), button:has-text("Enable")').first();
+                        const enableBtn = state.page.locator('text=/verify/i >> visible=true, text=/enable/i >> visible=true').first();
                         if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.evaluate(n=>n.click()).catch(()=>enableBtn.click());
                         else await state.page.keyboard.press('Enter');
                         
@@ -661,7 +726,7 @@ bot.on('callback_query', async (query) => {
             return;
         }
         else if (action === 'search_text') {
-            bot.sendMessage(chatId, "🔍 أرسل **النص** للبحث والضغط:");
+            bot.sendMessage(chatId, "🔍 أرسل **النص** للبحث والضغط (بحساسية عالية لكل الأحجام):");
             state.step = 'awaiting_search_text';
         }
         else if (action === 'mouse_menu') { await sendMouseMenu(chatId); }
@@ -734,11 +799,12 @@ bot.on('message', async (msg) => {
     else if (state.step === 'awaiting_search_text' && state.isInteractive) {
         state.step = null;
         try {
-            const loc = state.page.locator(`:text-is("${text}") >> visible=true, text="${text}" >> visible=true`).first();
+            // بحث ذكي بالـ Regex للوضع اليدوي أيضاً!
+            const loc = state.page.locator(`text=/${text}/i >> visible=true`).first();
             if (await loc.isVisible({ timeout: 5000 }).catch(()=>false)) {
                 await loc.evaluate(n=>n.click()).catch(()=>loc.click()); 
                 await sleep(1500); await sendStepPhoto(state.page, chatId, `تم الضغط على النص: "${text}"`);
-            } else bot.sendMessage(chatId, `❌ لم أتمكن من العثور على النص المرئي.`);
+            } else bot.sendMessage(chatId, `❌ لم أتمكن من العثور على أي نص يحتوي على هذا الحرف/الكلمة.`);
         } catch(e) {}
         await sendInteractiveMenu(chatId);
     }
@@ -790,4 +856,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 الرادار القطعي الشامل يعمل الآن (أولوية الخانات + JS Injection لتخطي النوافذ)...");
+console.log("🤖 الرادار المتطور (Regex + Smart Forms) يعمل الآن بكامل طاقته...");
