@@ -2,12 +2,12 @@
  * ==========================================================
  * ChatGPT 2FA Automator & Playwright Script Generator
  * ==========================================================
- * - [الذكاء المطلق] رادار الشاشة: يقرأ الأزرار ويتعامل معها بأولويات.
- * - [تحليل النماذج] يعبئ الاسم (باسم عشوائي حقيقي) والعمر قبل ضغط Continue.
- * - [تخطي ذكي] يبحث عن Skip ويضغطها قبل Next لتجاوز الاستبيانات فوراً.
- * - أتمتة 100% قطعية (أدخل كود البريد فقط والنظام يتكفل بالباقي).
- * - توثيق كامل بصور مرقمة لكل حركة يفكر بها البوت.
- * - تسليم الحساب بصيغة نظيفة: ايميل / باسورد / رمز / رابط.
+ * - [الرادار القناص 🧠] آلة حالة تقرأ الشاشة وتتخذ قرارات حسب الأولويات.
+ * - [تعبئة ذكية 👤] توليد أسماء حقيقية وتعبئة العمر آلياً إن ظهرت الخانات.
+ * - [تخطي إجباري ⏭️] قنص كلمات (Skip, Tour, Done) بالـ JS Injection.
+ * - أتمتة قطعية 100%: أدخل الإيميل وكود البريد، ثم استلم الحساب جاهزاً!
+ * - تسليم الحساب بصيغة نظيفة: ايميل / باسورد / رمز / رابط 2FA.
+ * - توثيق كامل مستمر وتصوير الشاشة.
  * ==========================================================
  */
 
@@ -63,7 +63,7 @@ class PlaywrightCodeGenerator {
         this.lastCommand = linesArr[linesArr.length - 1];
     }
     getFinalScript() {
-        return `// ==========================================\n// 🤖 سكربت Playwright التحليلي (مدعم بالرادار الذكي لتخطي النوافذ)\n// ==========================================\n\nconst { chromium } = require('playwright');\n\n(async () => {\n    const browser = await chromium.launch({ headless: false });\n    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });\n    const page = await context.newPage();\n${this.codeLines.join('\n')}\n\n    // await browser.close();\n})();`;
+        return `// ==========================================\n// 🤖 سكربت Playwright التحليلي (مدعم بالرادار القناص 🧠)\n// ==========================================\n\nconst { chromium } = require('playwright');\n\n(async () => {\n    const browser = await chromium.launch({ headless: false });\n    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });\n    const page = await context.newPage();\n${this.codeLines.join('\n')}\n\n    // await browser.close();\n})();`;
     }
 }
 
@@ -106,7 +106,7 @@ async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
     return null;
 }
 
-// ================= دالة التصوير الذكية (تصوير مستمر مرقم) =================
+// ================= دالة التصوير الذكية =================
 async function sendStepPhoto(page, chatId, caption) {
     try {
         const state = userState[chatId];
@@ -280,7 +280,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 };
                 bot.on('message', listener);
             });
-            await updateStatus("✅ تم استلام الكود. الرادار الذكي سيتولى القيادة الآن، اترك الهاتف تماماً! 🚀");
+            await updateStatus("✅ تم استلام الكود. الرادار الشامل سيتولى القيادة الآن، اترك الهاتف تماماً! 🚀");
         } else {
             await updateStatus("في انتظار صفحة الكود...");
             code = await waitForMailTmCode(email, mailToken, chatId, 100);
@@ -296,31 +296,27 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             await sendStepPhoto(page, chatId, `📨 تمت كتابة الكود: ${code}`);
         }
 
-        // نضغط زر الاستمرار (أو إنتر) وننتقل للرادار ليحلل الشاشة بمفرده
-        const continueBtnAfterCode = page.locator('button:has-text("Continue") >> visible=true').last();
-        if (await continueBtnAfterCode.isVisible().catch(()=>false)) await continueBtnAfterCode.click({ force: true });
-        else await page.keyboard.press('Enter');
-        await sleep(5000); 
-
         userState[chatId].accountInfo = { email: email, password: chatGptPassword };
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), `${email}|${chatGptPassword}\n`);
 
-        await sendStepPhoto(page, chatId, "🛸 تفعيل الرادار الذكي (Smart Radar) للتعامل مع أي بيانات أو نوافذ...");
+        await sendStepPhoto(page, chatId, "🛸 تفعيل الرادار القناص (Sniper Radar) لمسح الخانات وتدمير النوافذ...");
 
         // =========================================================================================
-        // 🧠 الرادار الذكي (The Ultimate Smart Radar) لكسر النوافذ وتعبئة البيانات 
+        // 🧠 الرادار القطعي الشامل (The Ultimate Omniscient Radar)
         // =========================================================================================
-        codeGen.addRawBlock("عقل ماسح ذكي: يملأ البيانات إن وجدت، ويدمر أي نوافذ ترحيبية تعترض طريقه ويصل لـ 2FA", [
+        codeGen.addRawBlock("الرادار القطعي: يعبئ البيانات أولاً، يدمر النوافذ بالـ JS Injection، ويصل لـ 2FA", [
             `let radarActive = true;`,
             `let radarAttempts = 0;`,
             `let secretCodeFinal = null;`,
-            `while (radarActive && radarAttempts < 35) {`,
+            `while (radarActive && radarAttempts < 40) {`,
             `    radarAttempts++;`,
             `    await page.waitForTimeout(2000);`,
-            `    // 1. هل توجد خانة اسم (تعبئة البيانات)؟`,
+            `    // 1. أولوية قصوى: هل توجد خانة اسم (تعبئة البيانات)؟`,
             `    const nameBox = page.locator('input[name="fullname"], input[name="Full name"], input[name="name"], [aria-label*="name" i], [placeholder*="name" i]').first();`,
             `    if (await nameBox.isVisible().catch(()=>false)) {`,
-            `        const randomName = "Alex " + Math.floor(Math.random() * 1000);`,
+            `        const firstNames = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "Emma", "Olivia", "Ava", "Isabella", "Sophia", "Mia", "Amelia", "Harper"];`,
+            `        const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"];`,
+            `        const randomName = firstNames[Math.floor(Math.random() * firstNames.length)] + " " + lastNames[Math.floor(Math.random() * lastNames.length)];`,
             `        await nameBox.fill(randomName);`,
             `        const bdayBox = page.locator('input[name="birthday"], input[placeholder*="birthday" i], [aria-label*="birthday" i]').first();`,
             `        if (await bdayBox.isVisible().catch(()=>false)) {`,
@@ -328,42 +324,45 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             `            await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');`,
             `            await page.keyboard.type("01012000", { delay: 100 });`,
             `        } else { await page.keyboard.press('Tab'); await page.keyboard.type("25", { delay: 100 }); }`,
-            `        const contBtn = page.locator('button:has-text("Continue") >> visible=true, button:has-text("Agree") >> visible=true').last();`,
-            `        if (await contBtn.isVisible()) await contBtn.click(); else await page.keyboard.press('Enter');`,
+            `        const contBtn = page.locator('button:has-text("Continue"), button:has-text("Agree")').first();`,
+            `        if (await contBtn.isVisible().catch(()=>false)) await contBtn.evaluate(n=>n.click()).catch(()=>contBtn.click({force: true}));`,
+            `        else await page.keyboard.press('Enter');`,
             `        continue;`,
             `    }`,
             `    // 2. هل ظهر الكود 32 حرف؟`,
-            `    const pageText = await page.innerText('body');`,
+            `    const pageText = await page.innerText('body').catch(()=>'');`,
             `    const secretMatch = pageText.match(/\\b[A-Z2-7]{32}\\b/);`,
             `    if (secretMatch) { secretCodeFinal = secretMatch[0]; radarActive = false; break; }`,
-            `    // 3. هل يوجد زر إظهار الكود؟`,
-            `    const troubleBtn = page.locator('text="Trouble scanning?" >> visible=true').first();`,
-            `    if (await troubleBtn.isVisible().catch(()=>false)) { await troubleBtn.click(); continue; }`,
-            `    // 4. تخطي النوافذ الاستبيانية والترحيبية (الترتيب يهم: Skip قبل Next)`,
-            `    const skipBtns = ["Skip Tour", "Skip", "Okay", "Done", "Next", "Continue"];`,
+            `    // 3. هل يوجد زر إظهار الكود (Trouble scanning)؟`,
+            `    const troubleBtn = page.locator(':text-is("Trouble scanning?") >> visible=true, text="Trouble scanning?" >> visible=true').first();`,
+            `    if (await troubleBtn.isVisible().catch(()=>false)) { await troubleBtn.evaluate(node => node.click()).catch(()=>troubleBtn.click({ force: true })); continue; }`,
+            `    // 4. قنص النوافذ الاستبيانية (استهداف النصوص بغض النظر عن نوع العنصر)`,
+            `    const skipBtns = ["Skip Tour", "Skip", "Okay", "Done", "Continue", "Next"];`,
             `    let clickedPopup = false;`,
             `    for (const txt of skipBtns) {`,
-            `        const btn = page.locator(\`button:has-text("\${txt}") >> visible=true, a:has-text("\${txt}") >> visible=true, div[role="button"]:has-text("\${txt}") >> visible=true\`).first();`,
+            `        const btn = page.locator(\`button:has-text("\${txt}") >> visible=true, a:has-text("\${txt}") >> visible=true, :text-is("\${txt}") >> visible=true\`).first();`,
             `        if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {`,
-            `            await btn.click({ force: true }); clickedPopup = true; break;`,
+            `            await btn.evaluate(node => node.click()).catch(() => btn.click({ force: true }));`,
+            `            clickedPopup = true; break;`,
             `        }`,
             `    }`,
             `    if (clickedPopup) continue;`,
             `    // 5. التوجيه لصفحة الأمان إذا خلت الشاشة`,
-            `    if (page.url().includes('/chat') || page.url().includes('chatgpt.com/?') || page.url() === 'https://chatgpt.com/') {`,
+            `    const currentUrl = page.url();`,
+            `    if (currentUrl === 'https://chatgpt.com/' || currentUrl.includes('chatgpt.com/?') || currentUrl.includes('/chat')) {`,
             `        await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded" }).catch(()=>{});`,
             `        await page.waitForTimeout(3000); continue;`,
             `    }`,
-            `    // 6. תفعيل الإحداثيات إذا طال الانتظار في صفحة Security`,
-            `    if (page.url().includes('#settings/Security')) {`,
+            `    // 6. تفعيل الإحداثيات السحرية في صفحة Security`,
+            `    if (currentUrl.includes('#settings/Security')) {`,
             `        if (radarAttempts % 4 === 0) { try { await page.mouse.click(986.56, 353.28); } catch(e){} }`,
             `        const authToggle = page.locator('button[role="switch"]').last();`,
             `        if (await authToggle.isVisible().catch(()=>false)) {`,
             `            const checked = await authToggle.getAttribute('aria-checked');`,
             `            if (checked !== 'true') await authToggle.click({force:true});`,
             `        } else {`,
-            `            const appBtn = page.locator('text="Authenticator app" >> visible=true').first();`,
-            `            if (await appBtn.isVisible().catch(()=>false)) await appBtn.click({force:true});`,
+            `            const appBtn = page.locator(':text-is("Authenticator app") >> visible=true, text="Authenticator app" >> visible=true').first();`,
+            `            if (await appBtn.isVisible().catch(()=>false)) await appBtn.evaluate(n=>n.click()).catch(()=>appBtn.click({force:true}));`,
             `        }`,
             `    }`,
             `}`
@@ -373,20 +372,19 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         let radarAttempts = 0;
         let secretCodeFinal = null;
 
-        while (radarActive && radarAttempts < 35) {
+        while (radarActive && radarAttempts < 40) {
             checkCancel();
             radarAttempts++;
             await sleep(2000);
 
-            // 1. أولوية قصوى: هل توجد خانة اسم/تاريخ ميلاد؟
+            // 1. أولوية قصوى: تعبئة البيانات الشخصية (يمنع المتصفح من التعليق)
             const nameBox = page.locator('input[name="fullname"], input[name="Full name"], input[name="name"], [aria-label*="name" i], [placeholder*="name" i]').first();
             if (await nameBox.isVisible({ timeout: 1000 }).catch(()=>false)) {
-                // توليد اسم أجنبي حقيقي وعشوائي
-                const randomFirstName = faker.person.firstName();
-                const randomLastName = faker.person.lastName();
-                const fullName = `${randomFirstName} ${randomLastName}`;
+                const firstNames = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "Emma", "Olivia", "Ava", "Isabella", "Sophia", "Mia", "Amelia", "Harper"];
+                const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"];
+                const randomName = firstNames[Math.floor(Math.random() * firstNames.length)] + " " + lastNames[Math.floor(Math.random() * lastNames.length)];
                 
-                await nameBox.fill(fullName);
+                await nameBox.fill(randomName);
                 await sleep(500);
                 
                 const bdayBox = page.locator('input[name="birthday"], [aria-label*="birthday" i], [placeholder*="birthday" i]').first();
@@ -399,61 +397,67 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                     await page.keyboard.type("25", { delay: 100 });
                 }
                 
-                await sendStepPhoto(page, chatId, `👤 الرادار: وجدت نافذة بيانات وتم تعبئة اسم عشوائي حقيقي (${fullName}) وتاريخ الميلاد.`);
+                await sendStepPhoto(page, chatId, `👤 الرادار: وجدت خانات بيانات وتم تعبئة اسم عشوائي حقيقي (${randomName}) وتاريخ الميلاد.`);
                 
-                const contBtn = page.locator('button:has-text("Continue") >> visible=true, button:has-text("Agree") >> visible=true').last();
-                if (await contBtn.isVisible().catch(()=>false)) await contBtn.click({ force: true });
-                else await page.keyboard.press('Enter');
+                const contBtn = page.locator('button:has-text("Continue"), button:has-text("Agree")').first();
+                if (await contBtn.isVisible().catch(()=>false)) {
+                    await contBtn.evaluate(n => n.click()).catch(() => contBtn.click({ force: true }));
+                } else {
+                    await page.keyboard.press('Enter');
+                }
                 
                 await sleep(2000);
-                continue; // إعادة الدورة لمسح الشاشة من جديد
+                continue; 
             }
 
             // 2. هل ظهر الكود ذو الـ 32 حرف على الشاشة؟
-            const pageText = await page.innerText('body');
+            const pageText = await page.innerText('body').catch(()=>'');
             const secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
             if (secretMatch) {
                 secretCodeFinal = secretMatch[0];
-                radarActive = false; // وجدنا الكنز! نوقف الرادار
+                radarActive = false; 
                 break;
             }
 
             // 3. هل زر إظهار الكود موجود (Trouble scanning)؟
-            const troubleBtn = page.locator('text="Trouble scanning?" >> visible=true').first();
+            const troubleBtn = page.locator(':text-is("Trouble scanning?") >> visible=true, text="Trouble scanning?" >> visible=true').first();
             if (await troubleBtn.isVisible({ timeout: 500 }).catch(()=>false)) {
-                await troubleBtn.click({ force: true });
+                await troubleBtn.evaluate(node => node.click()).catch(() => troubleBtn.click({ force: true }));
                 await sleep(1500);
-                await sendStepPhoto(page, chatId, '🎯 الرادار: تم العثور على زر "Trouble scanning?" والضغط عليه.');
+                await sendStepPhoto(page, chatId, '🎯 الرادار: تم العثور على Trouble scanning والضغط عليه بقوة JS.');
                 continue;
             }
 
-            // 4. النوافذ الترحيبية والاستبيانات (نفضل Skip على Next لتخطي الاستبيان)
-            const skipBtns = ["Skip Tour", "Skip", "Okay", "Done", "Next", "Continue"];
+            // 4. القناص الشامل: صيد الكلمات المفتاحية بالترتيب الماكر (Skip قبل Next)
+            const skipBtns = ["Skip Tour", "Skip", "Okay", "Done", "Continue", "Next"];
             let clickedPopup = false;
             for (const txt of skipBtns) {
                 try {
-                    const btn = page.locator(`button:has-text("${txt}") >> visible=true, a:has-text("${txt}") >> visible=true, div[role="button"]:has-text("${txt}") >> visible=true`).first();
-                    if (await btn.isVisible({ timeout: 500 })) {
-                        await btn.click({ force: true });
+                    // هذا الكود يبحث عن النص سواء كان زراً أو رابطاً أو نصاً عادياً (مثل صورتك رقم 30)
+                    const btn = page.locator(`button:has-text("${txt}") >> visible=true, a:has-text("${txt}") >> visible=true, :text-is("${txt}") >> visible=true`).first();
+                    if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
+                        // تكتيك الحقن القسري لتخطي حماية العناصر غير القابلة للنقر
+                        await btn.evaluate(node => node.click()).catch(() => btn.click({ force: true }));
                         await sleep(1500);
-                        await sendStepPhoto(page, chatId, `⏭️ الرادار: تم اكتشاف وتخطي نافذة بالضغط على زر: ${txt}`);
+                        await sendStepPhoto(page, chatId, `⏭️ القناص: تم قنص الكلمة وتدمير النافذة بالضغط القسري على: "${txt}"`);
                         clickedPopup = true;
-                        break; // تم النقر، نعيد المسح
+                        break; 
                     }
                 } catch(e){}
             }
             if (clickedPopup) continue;
 
-            // 5. الشاشة هادئة ولم يجد شيء؟ نوجه البوت لصفحة الأمان بقوة (تكتيك الإحداثيات)
-            if (page.url() === 'https://chatgpt.com/' || page.url().includes('/chat') || page.url().includes('chatgpt.com/?')) {
+            // 5. التوجيه لصفحة الأمان عند استقرار الشاشة
+            const currentUrl = page.url();
+            if (currentUrl === 'https://chatgpt.com/' || currentUrl.includes('/chat') || currentUrl.includes('chatgpt.com/?')) {
                 await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded" }).catch(()=>{});
                 await sleep(4000);
                 await sendStepPhoto(page, chatId, "⚙️ الرادار: تم التوجيه إلى صفحة الأمان تلقائياً.");
                 continue;
             }
 
-            // 6. تفعيل Authenticator app أو ضرب الإحداثيات
-            if (page.url().includes('#settings/Security')) {
+            // 6. الإحداثيات السحرية في صفحة الأمان
+            if (currentUrl.includes('#settings/Security')) {
                 if (radarAttempts % 4 === 0) {
                     try { await page.mouse.click(986.56, 353.28); } catch(e){}
                 }
@@ -462,16 +466,16 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                     const checked = await authToggle.getAttribute('aria-checked');
                     if (checked !== 'true') await authToggle.click({force:true});
                 } else {
-                    const appBtn = page.locator('text="Authenticator app" >> visible=true').first();
-                    if (await appBtn.isVisible().catch(()=>false)) await appBtn.click({force:true});
+                    const appBtn = page.locator(':text-is("Authenticator app") >> visible=true, text="Authenticator app" >> visible=true').first();
+                    if (await appBtn.isVisible().catch(()=>false)) await appBtn.evaluate(n=>n.click()).catch(()=>appBtn.click({force:true}));
                 }
             }
         }
         // ================== نهاية الرادار الذكي ==================
 
-        // ================== المرحلة النهائية: سحب الكود وإرساله ==================
+        // ================== المرحلة النهائية: التفعيل والتسليم ==================
         if (secretCodeFinal) {
-            await sendStepPhoto(page, chatId, `🛡️ نجاح الرادار! تم استخراج الكود السري:\n${secretCodeFinal}`);
+            await sendStepPhoto(page, chatId, `🛡️ نجاح الرادار المطلق! تم استخراج الكود السري:\n${secretCodeFinal}`);
             
             codeGen.addRawBlock(
                 `جلب كود التحقق من 2fa.fb.tools ولصقه لتأكيد المصادقة`,
@@ -490,7 +494,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                     `    else await page.keyboard.type(code6, { delay: 100 });`,
                     `    await page.waitForTimeout(1500);`,
                     `    const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable")').first();`,
-                    `    if (await enableBtn.isVisible()) await enableBtn.click();`,
+                    `    if (await enableBtn.isVisible()) await enableBtn.evaluate(n=>n.click()).catch(()=>enableBtn.click());`,
                     `    else await page.keyboard.press('Enter');`,
                     `}`
                 ]
@@ -516,24 +520,24 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 await sleep(1500);
                 await sendStepPhoto(page, chatId, `⌨️ تم لصق كود التحقق 6 أرقام: ${code6}`);
                 
-                const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable") >> visible=true').first();
-                if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.click();
+                const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable")').first();
+                if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.evaluate(n=>n.click()).catch(()=>enableBtn.click());
                 else await page.keyboard.press('Enter');
                 
                 await sleep(3000);
                 await sendStepPhoto(page, chatId, "✅ تمت عملية التحقق والتفعيل النهائي للـ 2FA");
                 
-                // ==== التسليم النهائي للحساب بالصيغة الفخمة ====
+                // ==== التسليم النهائي للحساب بالصيغة المطلوبة تماماً ====
                 const finalMsg = `ايميل: ${email}\nباسورد: ${chatGptPassword}\nرمز المصادقة الثنائة: ${secretCodeFinal}\nالرابط: https://2fa.fb.tools/${secretCodeFinal}`;
                 await bot.sendMessage(chatId, finalMsg);
                 
                 const jsCode = codeGen.getFinalScript();
                 const logPath = path.join(__dirname, `AutoGenerated_Script_${Date.now()}.js`);
                 fs.writeFileSync(logPath, jsCode);
-                await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت النهائي (بالرادار الذكي) بنجاح!**" });
+                await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت النهائي (بالرادار القطعي) بنجاح!**" });
                 fs.unlinkSync(logPath);
 
-                bot.sendMessage(chatId, "✅ اكتملت المهمة باستخدام الرادار الذكي وتم إغلاق المتصفح.");
+                bot.sendMessage(chatId, "✅ اكتملت المهمة باستخدام الرادار القطعي وتم إغلاق المتصفح.");
                 
                 if (context) await context.close().catch(()=>{});
                 try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
@@ -543,7 +547,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             }
         }
              
-        // في حال فشل الرادار تماماً واستسلم بعد 35 محاولة (الخطة ب)
+        // في حال فشل الرادار تماماً واستسلم (الخطة ب)
         codeGen.addStep("استسلام הרادار الذكي. تحويل للوضع اليدوي (شبكة المربعات).");
         await bot.sendMessage(chatId, "⚠️ **الموقع يقاوم بشدة! تم تفعيل وضع الطوارئ للتدخل اليدوي.**");
         await drawGridAndScreenshot(page, chatId, "🔲 **أنت الآن في وضع الطوارئ، استخدم الأرقام.**");
@@ -570,8 +574,8 @@ function sendMainMenu(chatId) {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
-                [{ text: '▶️ إنشاء حساب آلي (الرادار الذكي)', callback_data: 'create_auto' }],
-                [{ text: '✍️ تشغيل مخصص (إدخال إيميل وكود ثم أتمتة بالرادار)', callback_data: 'create_manual' }],
+                [{ text: '▶️ إنشاء حساب آلي (الرادار القطعي)', callback_data: 'create_auto' }],
+                [{ text: '✍️ تشغيل مخصص (إدخال إيميل وكود -> أتمتة شاملة)', callback_data: 'create_manual' }],
                 [{ text: '🛑 إلغاء العملية', callback_data: 'cancel' }]
             ]
         }
@@ -605,9 +609,9 @@ bot.on('callback_query', async (query) => {
                 let secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
                 
                 if (!secretMatch) {
-                    const troubleBtn = state.page.locator('text="Trouble scanning?" >> visible=true').first();
+                    const troubleBtn = state.page.locator(':text-is("Trouble scanning?") >> visible=true, text="Trouble scanning?" >> visible=true').first();
                     if (await troubleBtn.isVisible().catch(()=>false)) {
-                        await troubleBtn.click();
+                        await troubleBtn.evaluate(n=>n.click()).catch(()=>troubleBtn.click());
                         await sleep(1500);
                         await sendStepPhoto(state.page, chatId, "تم الضغط لإظهار الكود הסري");
                         pageText = await state.page.innerText('body');
@@ -637,8 +641,8 @@ bot.on('callback_query', async (query) => {
                         
                         await sleep(1500);
                         
-                        const enableBtn = state.page.locator('button:has-text("Verify"), button:has-text("Enable") >> visible=true').first();
-                        if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.click();
+                        const enableBtn = state.page.locator('button:has-text("Verify"), button:has-text("Enable")').first();
+                        if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.evaluate(n=>n.click()).catch(()=>enableBtn.click());
                         else await state.page.keyboard.press('Enter');
                         
                         await sleep(3000);
@@ -730,9 +734,10 @@ bot.on('message', async (msg) => {
     else if (state.step === 'awaiting_search_text' && state.isInteractive) {
         state.step = null;
         try {
-            const loc = state.page.locator(`text="${text}" >> visible=true`).first();
+            const loc = state.page.locator(`:text-is("${text}") >> visible=true, text="${text}" >> visible=true`).first();
             if (await loc.isVisible({ timeout: 5000 }).catch(()=>false)) {
-                await loc.click(); await sleep(1500); await sendStepPhoto(state.page, chatId, `تم الضغط على النص: "${text}"`);
+                await loc.evaluate(n=>n.click()).catch(()=>loc.click()); 
+                await sleep(1500); await sendStepPhoto(state.page, chatId, `تم الضغط على النص: "${text}"`);
             } else bot.sendMessage(chatId, `❌ لم أتمكن من العثور على النص المرئي.`);
         } catch(e) {}
         await sendInteractiveMenu(chatId);
@@ -774,7 +779,7 @@ bot.on('message', async (msg) => {
     else if (state.step === 'awaiting_email') {
         if (!text.includes('@')) return bot.sendMessage(chatId, "❌ إيميل غير صحيح.");
         state.step = null; isProcessing = true; const autoPass = generateSecurePassword(); 
-        bot.sendMessage(chatId, `✅ تم استلام الإيميل.\n🔑 الباسورد المولد آلياً: \`${autoPass}\`\n\n(بمجرد أن يُطلب منك كود البريد، أرسله هنا واترك الرادار الذكي يكمل كل شيء للآخر!)`, {parse_mode: 'Markdown'});
+        bot.sendMessage(chatId, `✅ تم استلام الإيميل.\n🔑 الباسورد المولد آلياً: \`${autoPass}\`\n\n(بمجرد أن يُطلب منك كود البريد، أرسله هنا واترك الرادار يكمل كل شيء للآخر!)`, {parse_mode: 'Markdown'});
         
         manualData = { email: text, password: autoPass };
         await createAccountLogic(chatId, true, manualData);
@@ -785,4 +790,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 الرادار الذكي الخارق يعمل الآن (أولوية الخانات -> تخطي النوافذ -> الإكمال التلقائي)...");
+console.log("🤖 الرادار القطعي الشامل يعمل الآن (أولوية الخانات + JS Injection لتخطي النوافذ)...");
