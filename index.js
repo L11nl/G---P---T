@@ -4,12 +4,10 @@
  * ==========================================================
  * - أداة توليد أكواد برمجية دقيقة (Playwright Code Builder).
  * - ترقيم تلقائي لجميع خطوات السكربت (الخطوة 1، الخطوة 2...).
- * - زر "البحث عن الرابط" للانتقال الحر وتوثيقه في السكربت.
- * - نظام تفاعلي قوي: بحث، ضغط، كتابة، وانتقال لروابط مخصصة.
+ * - توليد كود ديناميكي ذكي لجلب كود 2FA من التبويب والعودة للموقع.
+ * - نظام تفاعلي كامل وزر "البحث عن الرابط".
  * - نظام ماوس دقيق جداً (1125 مربع صغير) شفاف تماماً وأرقام شفافة.
- * - تخطي تلقائي للنوافذ الترحيبية (Skip, Skip Tour, Continue).
- * - توقف متعمد لمدة 5 ثواني ثم الذهاب لإعدادات الأمان في الوضع اليدوي.
- * - زر "المتابعة الى AF2" لإكمال الربط تلقائياً واستخراج الكود.
+ * - دالة ذكية لتخطي النوافذ الترحيبية ومنع تكرار الخطوات في السكربت.
  * ==========================================================
  */
 
@@ -35,30 +33,50 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const ACCOUNTS_FILE = 'accounts.txt';
 let isProcessing = false;
 
-// حفظ حالة كل مستخدم للتحكم والتتبع
 const userState = {};
 const MAIL_API = 'https://api.mail.tm';
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// ================= نظام توليد كود Playwright التحليلي (مع ترقيم الخطوات) =================
+// ================= نظام توليد كود Playwright التحليلي المطور =================
 class PlaywrightCodeGenerator {
     constructor() {
         this.codeLines = [];
-        this.stepCounter = 1; // عداد الخطوات يبدأ من 1
-    }
-    
-    addCommand(cmd) {
-        this.codeLines.push(`    ${cmd}`);
-        console.log(`[Generated Code]: ${cmd}`);
+        this.stepCounter = 1; 
+        this.lastCommand = "";
+        this.pendingStep = null;
     }
     
     addStep(comment) {
+        this.pendingStep = `\n    // === الخطوة ${this.stepCounter}: ${comment} ===`;
+    }
+    
+    addCommand(cmd) {
+        // منع تسجيل الأكواد المكررة والمتطابقة (مثل الضغط على الزر مرتين)
+        if (this.lastCommand === cmd && cmd.trim() !== "") {
+            this.pendingStep = null; 
+            return;
+        }
+        if (this.pendingStep) {
+            this.codeLines.push(this.pendingStep);
+            this.stepCounter++;
+            this.pendingStep = null;
+        }
+        this.codeLines.push(`    ${cmd}`);
+        console.log(`[Generated Code]: ${cmd}`);
+        this.lastCommand = cmd;
+    }
+
+    addRawBlock(comment, linesArr) {
         this.codeLines.push(`\n    // === الخطوة ${this.stepCounter}: ${comment} ===`);
         this.stepCounter++;
+        for (const line of linesArr) {
+            this.codeLines.push(`    ${line}`);
+        }
+        this.lastCommand = linesArr[linesArr.length - 1];
     }
     
     getFinalScript() {
-        return `// ==========================================\n// 🤖 سكربت Playwright التحليلي المستخرج\n// يحتوي على الأكواد والخطوات المرقمة بالتسلسل\n// ==========================================\n\nconst { chromium } = require('playwright');\n\n(async () => {\n    const browser = await chromium.launch({ headless: false });\n    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });\n    const page = await context.newPage();\n${this.codeLines.join('\n')}\n\n    // await browser.close();\n})();`;
+        return `// ==========================================\n// 🤖 سكربت Playwright التحليلي المستخرج\n// يحتوي على الأكواد والخطوات المرقمة بالتسلسل (بدون تكرار)\n// ==========================================\n\nconst { chromium } = require('playwright');\n\n(async () => {\n    const browser = await chromium.launch({ headless: false });\n    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });\n    const page = await context.newPage();\n${this.codeLines.join('\n')}\n\n    // await browser.close();\n})();`;
     }
 }
 
@@ -150,25 +168,21 @@ async function drawGridAndScreenshot(page, chatId, caption) {
                 const x = col * cellW;
                 const y = row * cellH;
 
-                // شفافية كاملة (0.0) للمربعات لقراءة الموقع من خلفها
                 ctx.fillStyle = 'rgba(0,0,0,0.0)';
                 ctx.fillRect(x, y, cellW, cellH);
 
-                // إطار المربع أصفر شفاف بنسبة 30% فقط
                 ctx.strokeStyle = 'rgba(255,255,0,0.3)';
                 ctx.lineWidth = 1;
                 ctx.strokeRect(x, y, cellW, cellH);
 
-                // إعدادات الخط (أرقام شفافة)
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; // أبيض شفاف بنسبة 70%
-                ctx.font = 'bold 9px Sans'; // تصغير الخط ليناسب دقة المربعات
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.font = 'bold 9px Sans'; 
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
 
                 const tx = x + cellW / 2;
                 const ty = y + cellH / 2;
 
-                // إطار أسود حول الرقم شفاف بنسبة 50% لتسهيل قراءة الموقع خلفه
                 ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
                 ctx.lineWidth = 2;
                 ctx.strokeText(String(i), tx, ty);
@@ -258,7 +272,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
     let statusMsgID = null;
     
     userState[chatId] = { step: null, cancel: false, isInteractive: false };
-    const codeGen = new PlaywrightCodeGenerator(); // يبدأ الترقيم التلقائي هنا
+    const codeGen = new PlaywrightCodeGenerator();
 
     const checkCancel = () => { if (userState[chatId]?.cancel) throw new Error("CANCELLED_BY_USER"); };
     const updateStatus = async (text) => {
@@ -391,23 +405,39 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
              // حفظ الإيميل والباسورد للمرحلة النهائية
              userState[chatId].accountInfo = { email: email, password: chatGptPassword };
 
-             if (isManual) {
-                 // ================= التشغيل اليدوي =================
-                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **تم إنشاء الحساب بنجاح:**\n\`${result}\`\n\nيتم الآن تخطي النوافذ الترحيبية والانتظار 5 ثواني...`, currentPhotoId);
-                 
-                 codeGen.addStep("تخطي النوافذ الترحيبية (Skip, Skip Tour, Continue)");
-                 const skipSequence = ["Skip", "Skip", "Skip Tour", "Continue"];
+             // --- تنظيف التكرار في السكربت المستخرج (تخطي النوافذ الترحيبية بشكل برمجي ذكي) ---
+             codeGen.addRawBlock(
+                 "دالة ذكية لتخطي النوافذ الترحيبية (إن وجدت) دون تكرار الأكواد",
+                 [
+                     `const skipBtns = ["Skip", "Skip Tour", "Continue", "Okay", "Done"];`,
+                     `for (let i = 0; i < 2; i++) {`,
+                     `    for (const btnText of skipBtns) {`,
+                     `        try {`,
+                     `            const btn = page.locator(\`text="\${btnText}"\`).first();`,
+                     `            if (await btn.isVisible({ timeout: 1000 })) await btn.click({ force: true });`,
+                     `        } catch (e) {}`,
+                     `    }`,
+                     `}`
+                 ]
+             );
+             
+             // التنفيذ الفعلي للتخطي في المتصفح
+             const skipSequence = ["Skip", "Skip Tour", "Continue", "Okay", "Done"];
+             for (let i = 0; i < 2; i++) {
                  for (const btnText of skipSequence) {
                      try {
                          const btn = page.locator(`text="${btnText}"`).first();
-                         await btn.waitFor({ state: 'visible', timeout: 3000 });
-                         await btn.click({ force: true });
-                         codeGen.addCommand(`await page.locator('text="${btnText}"').first().click();`);
-                         await sleep(1000);
-                     } catch (e) {
-                         // تجاهل وتخطي
-                     }
+                         if (await btn.isVisible({ timeout: 1500 })) {
+                             await btn.click({ force: true });
+                             await sleep(1000);
+                         }
+                     } catch (e) {}
                  }
+             }
+
+             if (isManual) {
+                 // ================= التشغيل اليدوي =================
+                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **تم إنشاء الحساب بنجاح:**\n\`${result}\`\n\nيتم الآن الانتظار 5 ثواني للتوجه إلى إعدادات الأمان...`, currentPhotoId);
 
                  codeGen.addStep("الانتظار لمدة 5 ثواني قبل التوجه لإعدادات الأمان");
                  await sleep(5000);
@@ -418,53 +448,79 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
                  await sleep(4000);
 
-                 currentPhotoId = await sendStepPhoto(page, chatId, "🛑 **نحن الآن في صفحة الأمان (Security).**\nاستخدم الماوس (بالضغط على زر مشاهدة المربعات الشفافة) لتحديد الزر الذي يظهر الكود السري.\n\nبمجرد أن يظهر الكود المكون من 32 حرف على الشاشة، اضغط من القائمة على زر **(🔐 المتابعة الى AF2)** ليكمل البوت العملية تلقائياً ويستخرج السكربت.", currentPhotoId);
+                 currentPhotoId = await sendStepPhoto(page, chatId, "🛑 **نحن الآن في صفحة الأمان (Security).**\nاستخدم الماوس لتحديد الزر الذي يظهر الكود السري (Trouble scanning).\n\nبمجرد أن يظهر الكود، اضغط **(🔐 المتابعة الى AF2)** من القائمة ليكمل البوت العملية تلقائياً ويستخرج السكربت.", currentPhotoId);
                  
                  await startInteractiveMode(chatId, page, context, tempDir, codeGen, currentPhotoId);
                  return true;
 
              } else {
                  // ================== المسار التلقائي ==================
-                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **نجاح (تلقائي):**\n\`${result}\`\n\nيتم الآن تخطي النوافذ الترحيبية والانتقال لإعداد المصادقة...`, currentPhotoId);
+                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **نجاح (تلقائي):**\n\`${result}\`\n\nيتم الآن الانتقال لإعداد المصادقة...`, currentPhotoId);
                  
-                 codeGen.addStep("تخطي النوافذ الترحيبية (Skip, Skip Tour, Continue)");
-                 const skipSequence = ["Skip", "Skip", "Skip Tour", "Continue"];
-                 for (const btnText of skipSequence) {
-                     try {
-                         const btn = page.locator(`text="${btnText}"`).first();
-                         await btn.waitFor({ state: 'visible', timeout: 3000 });
-                         await btn.click({ force: true });
-                         codeGen.addCommand(`await page.locator('text="${btnText}"').first().click();`);
-                         await sleep(1000);
-                     } catch (e) {}
-                 }
-
-                 codeGen.addStep("الدخول لإعدادات الأمان وتفعيل المصادقة 2FA");
+                 codeGen.addStep("الدخول لإعدادات الأمان وتفعيل المصادقة 2FA تلقائياً");
                  await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
                  codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
                  await sleep(4000);
 
+                 codeGen.addStep("تفعيل مفتاح المصادقة");
                  const authToggleBtn = page.locator('button[role="switch"]').last();
                  if (await authToggleBtn.isVisible().catch(()=>false)) {
                      await authToggleBtn.click({ force: true });
+                     codeGen.addCommand(`await page.locator('button[role="switch"]').last().click();`);
                  } else {
                      await page.locator('text="Authenticator app"').click({ force: true }).catch(()=>{});
+                     codeGen.addCommand(`await page.locator('text="Authenticator app"').click();`);
                  }
-                 codeGen.addCommand(`await page.locator('text="Authenticator app"').click();`);
                  await sleep(3000);
+
+                 const troubleBtn = page.locator('text="Trouble scanning?"').first();
+                 if (await troubleBtn.isVisible().catch(()=>false)) {
+                     codeGen.addStep('الضغط على "Trouble scanning?" لإظهار الكود النصي');
+                     await troubleBtn.click();
+                     codeGen.addCommand(`await page.locator('text="Trouble scanning?"').first().click();`);
+                     await sleep(2000);
+                 }
 
                  const pageText = await page.innerText('body');
                  const secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
                  
                  if (secretMatch) {
                      const secretCode = secretMatch[0];
-                     codeGen.addStep(`تم استخراج الرمز السري: ${secretCode}`);
                      currentPhotoId = await sendStepPhoto(page, chatId, `🔑 تم العثور على الكود السري بنجاح:\n\`${secretCode}\``, currentPhotoId);
+                     
+                     // توليد كود الـ 2FA الذكي في السكربت
+                     codeGen.addRawBlock(
+                        `استخراج الكود السري ونسخ 6 أرقام من 2fa.fb.tools عبر تبويب جديد والعودة`,
+                        [
+                            `const mfaPage = await context.newPage();`,
+                            `await mfaPage.goto("https://2fa.fb.tools/${secretCode}", { waitUntil: "domcontentloaded" });`,
+                            `await mfaPage.waitForTimeout(3000);`,
+                            `const mfaText = await mfaPage.innerText('body');`,
+                            `const code6Match = mfaText.match(/\\b\\d{6}\\b/);`,
+                            `if (code6Match) {`,
+                            `    const code6 = code6Match[0];`,
+                            `    await mfaPage.close();`,
+                            `    await page.bringToFront();`,
+                            `    const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();`,
+                            `    if (await codeInput.isVisible()) {`,
+                            `        await codeInput.fill(code6);`,
+                            `    } else {`,
+                            `        await page.keyboard.type(code6, { delay: 100 });`,
+                            `    }`,
+                            `    await page.waitForTimeout(1500);`,
+                            `    const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable")').first();`,
+                            `    if (await enableBtn.isVisible()) {`,
+                            `        await enableBtn.click();`,
+                            `    } else {`,
+                            `        await page.keyboard.press('Enter');`,
+                            `    }`,
+                            `}`
+                        ]
+                    );
                      
                      const mfaPage = await context.newPage();
                      await mfaPage.goto(`https://2fa.fb.tools/${secretCode}`).catch(()=>{});
                      await sleep(3000);
-                     
                      const mfaText = await mfaPage.innerText('body');
                      const code6Match = mfaText.match(/\b\d{6}\b/);
                      
@@ -473,28 +529,19 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                          await mfaPage.close();
                          await page.bringToFront();
                          
-                         codeGen.addStep("إدخال كود التحقق من أداة 2FA");
                          const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();
-                         if (await codeInput.isVisible().catch(()=>false)) {
-                             await codeInput.fill(code6);
-                         } else {
-                             await page.keyboard.type(code6, { delay: 100 });
-                         }
-                         codeGen.addCommand(`await page.keyboard.type("${code6}");`);
+                         if (await codeInput.isVisible().catch(()=>false)) await codeInput.fill(code6);
+                         else await page.keyboard.type(code6, { delay: 100 });
+                         
                          await sleep(1500);
                          
-                         codeGen.addStep("الضغط على زر التفعيل (Verify / Enable)");
                          const enableBtn = page.locator('button:has-text("Enable"), button:has-text("Verify")').first();
-                         if (await enableBtn.isVisible().catch(()=>false)) {
-                             await enableBtn.click();
-                             codeGen.addCommand(`await page.locator('button:has-text("Enable")').click();`);
-                         } else {
-                             await page.keyboard.press('Enter');
-                             codeGen.addCommand(`await page.keyboard.press('Enter');`);
-                         }
+                         if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.click();
+                         else await page.keyboard.press('Enter');
+                         
                          await sleep(3000);
                          
-                         currentPhotoId = await sendStepPhoto(page, chatId, "✅ تمت المصادقة الثنائية (2FA) بنجاح تام!", currentPhotoId);
+                         currentPhotoId = await sendStepPhoto(page, chatId, "✅ تمت المصادقة الثنائية (2FA) تلقائياً بنجاح تام!", currentPhotoId);
                          codeGen.addStep("تم تفعيل 2FA بنجاح. الدخول في وضع الاستعداد بانتظار أوامرك.");
                          await startInteractiveMode(chatId, page, context, tempDir, codeGen, currentPhotoId);
                          return true;
@@ -551,28 +598,69 @@ bot.on('callback_query', async (query) => {
     if (!userState[chatId]) userState[chatId] = { step: null, cancel: false, isInteractive: false };
     const state = userState[chatId];
 
-    // ================= أوامر التفاعل =================
     if (query.data.startsWith('int_')) {
         const action = query.data.replace('int_', '');
         if (!state.isInteractive || !state.page) return bot.sendMessage(chatId, "⚠️ الجلسة منتهية.");
 
-        // === زر البحث عن الرابط ===
         if (action === 'goto_url') {
             bot.sendMessage(chatId, "🌐 أرسل **الرابط (URL)** الذي تريد التوجه إليه (يفضل أن يبدأ بـ http:// أو https://):", { reply_markup: { inline_keyboard: [[{text: "🔙 رجوع", callback_data: "int_back_main"}]] } });
             state.step = 'awaiting_goto_url';
         }
 
-        // === زر المتابعة إلى AF2 ===
+        // === زر المتابعة إلى AF2 (الذي يولد الكود الديناميكي للتبويبات) ===
         else if (action === 'continue_af2') {
-            bot.sendMessage(chatId, "⏳ جاري استخراج كود الـ 32 حرف وإكمال إجراءات الـ AF2...");
+            bot.sendMessage(chatId, "⏳ جاري استخراج كود الـ 32 حرف وإكمال إجراءات الـ AF2 في نافذة جديدة...");
             try {
-                const pageText = await state.page.innerText('body');
-                const secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
+                // محاولة ذكية لإظهار الكود إذا كان مخفياً تحت "Trouble scanning"
+                let pageText = await state.page.innerText('body');
+                let secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
                 
+                if (!secretMatch) {
+                    const troubleBtn = state.page.locator('text="Trouble scanning?"').first();
+                    if (await troubleBtn.isVisible().catch(()=>false)) {
+                        state.codeGen.addStep(`الضغط على "Trouble scanning?" لإظهار الكود السري`);
+                        state.codeGen.addCommand(`await page.locator('text="Trouble scanning?"').first().click();`);
+                        await troubleBtn.click();
+                        await sleep(1500);
+                        pageText = await state.page.innerText('body');
+                        secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
+                    }
+                }
+
                 if (secretMatch) {
                     const secretCode = secretMatch[0];
-                    state.codeGen.addStep(`استخراج الكود السري: ${secretCode}`);
                     
+                    // === كتابة الأكواد الديناميكية الحقيقية في السكربت المُستخرج ===
+                    state.codeGen.addRawBlock(
+                        `استخراج الكود السري (${secretCode}) وفتح نافذة 2fa.fb.tools لنسخ 6 أرقام ولصقها تلقائياً`,
+                        [
+                            `const mfaPage = await context.newPage();`,
+                            `await mfaPage.goto("https://2fa.fb.tools/${secretCode}", { waitUntil: "domcontentloaded" });`,
+                            `await mfaPage.waitForTimeout(3000);`,
+                            `const mfaText = await mfaPage.innerText('body');`,
+                            `const code6Match = mfaText.match(/\\b\\d{6}\\b/);`,
+                            `if (code6Match) {`,
+                            `    const code6 = code6Match[0];`,
+                            `    await mfaPage.close();`,
+                            `    await page.bringToFront();`,
+                            `    const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();`,
+                            `    if (await codeInput.isVisible()) {`,
+                            `        await codeInput.fill(code6);`,
+                            `    } else {`,
+                            `        await page.keyboard.type(code6, { delay: 100 });`,
+                            `    }`,
+                            `    await page.waitForTimeout(1500);`,
+                            `    const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable")').first();`,
+                            `    if (await enableBtn.isVisible()) {`,
+                            `        await enableBtn.click();`,
+                            `    } else {`,
+                            `        await page.keyboard.press('Enter');`,
+                            `    }`,
+                            `}`
+                        ]
+                    );
+
+                    // التنفيذ الفعلي للبوت في المتصفح
                     const mfaPage = await state.context.newPage();
                     await mfaPage.goto(`https://2fa.fb.tools/${secretCode}`).catch(()=>{});
                     await sleep(3000);
@@ -586,24 +674,15 @@ bot.on('callback_query', async (query) => {
                         await state.page.bringToFront();
                         
                         const codeInput = state.page.locator('input[type="text"], input[placeholder*="code" i]').first();
-                        if (await codeInput.isVisible().catch(()=>false)) {
-                            await codeInput.fill(code6);
-                        } else {
-                            await state.page.keyboard.type(code6, { delay: 100 });
-                        }
-                        state.codeGen.addStep(`لصق كود التحقق 6 أرقام`);
-                        state.codeGen.addCommand(`await page.keyboard.type("${code6}");`);
+                        if (await codeInput.isVisible().catch(()=>false)) await codeInput.fill(code6);
+                        else await state.page.keyboard.type(code6, { delay: 100 });
+                        
                         await sleep(1500);
                         
-                        state.codeGen.addStep(`الضغط على زر التفعيل لتأكيد الـ 2FA`);
                         const enableBtn = state.page.locator('button:has-text("Verify"), button:has-text("Enable")').first();
-                        if (await enableBtn.isVisible().catch(()=>false)) {
-                            await enableBtn.click();
-                            state.codeGen.addCommand(`await page.locator('button:has-text("Verify")').click();`);
-                        } else {
-                            await state.page.keyboard.press('Enter');
-                            state.codeGen.addCommand(`await page.keyboard.press('Enter');`);
-                        }
+                        if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.click();
+                        else await state.page.keyboard.press('Enter');
+                        
                         await sleep(3000);
                         
                         const acc = state.accountInfo || { email: "غير متوفر", password: "غير متوفر" };
@@ -621,7 +700,7 @@ bot.on('callback_query', async (query) => {
                         const logPath = path.join(__dirname, `AutoGenerated_Script_${Date.now()}.js`);
                         fs.writeFileSync(logPath, jsCode);
                         
-                        await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت النهائي المُرقم بنجاح!**\nالآن يمكنك استخدام هذا السكربت لتطوير العملية التلقائية مستقبلاً.", parse_mode: 'Markdown' });
+                        await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت النهائي المُرقم بنجاح!**\nيحتوي السكربت الآن على الآلية التلقائية (فتح تبويب، جلب الكود، ولصقه) وهو نظيف بدون تكرارات.", parse_mode: 'Markdown' });
                         fs.unlinkSync(logPath);
                         
                         if (state.resolveInteractive) state.resolveInteractive();
@@ -660,9 +739,9 @@ bot.on('callback_query', async (query) => {
         else if (action === 'click_mouse') {
             if (state.mouseX !== undefined && state.mouseY !== undefined) {
                 await removeRedDot(state.page);
-                await state.page.mouse.click(state.mouseX, state.mouseY);
                 state.codeGen.addStep(`الضغط كليك بالماوس على الإحداثيات: X=${state.mouseX}, Y=${state.mouseY}`);
                 state.codeGen.addCommand(`await page.mouse.click(${state.mouseX}, ${state.mouseY});`);
+                await state.page.mouse.click(state.mouseX, state.mouseY);
                 
                 await sleep(1500);
                 state.currentPhotoId = await sendStepPhoto(state.page, chatId, `🔴 تم الضغط (كليك) بنجاح على النقطة! وتم حفظ الخطوة.`, state.currentPhotoId);
@@ -676,9 +755,9 @@ bot.on('callback_query', async (query) => {
             state.step = 'awaiting_type_text';
         }
         else if (action === 'press_enter') {
-            await state.page.keyboard.press('Enter');
-            state.codeGen.addStep(`الضغط على زر Enter في الكيبورد`);
+            state.codeGen.addStep(`الضغط على مفتاح Enter في لوحة المفاتيح`);
             state.codeGen.addCommand(`await page.keyboard.press('Enter');`);
+            await state.page.keyboard.press('Enter');
             await sleep(1500);
             state.currentPhotoId = await sendStepPhoto(state.page, chatId, "↩️ تم الضغط على مفتاح Enter.", state.currentPhotoId);
             await sendInteractiveMenu(chatId);
@@ -702,7 +781,7 @@ bot.on('callback_query', async (query) => {
             const logPath = path.join(__dirname, `AutoGenerated_Script_${Date.now()}.js`);
             fs.writeFileSync(logPath, jsCode);
             
-            await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت المُرقم بنجاح!**\nهذا الملف يحتوي على كود Playwright الدقيق لجميع الخطوات (مرقمة ومسلسلة من 1).", parse_mode: 'Markdown' });
+            await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت المُرقم بنجاح!**\nالملف الآن نظيف وخالي من التكرار.", parse_mode: 'Markdown' });
             fs.unlinkSync(logPath);
             
             if (state.resolveInteractive) state.resolveInteractive();
@@ -743,14 +822,14 @@ bot.on('message', async (msg) => {
         state.step = null;
         let targetUrl = text;
         if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-            targetUrl = 'https://' + targetUrl; // تصحيح تلقائي وإضافة https
+            targetUrl = 'https://' + targetUrl; 
         }
         
         bot.sendMessage(chatId, `🌐 جاري التوجه إلى الرابط...`);
         try {
             state.codeGen.addStep(`الذهاب إلى الرابط المخصص: ${targetUrl}`);
-            await state.page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
             state.codeGen.addCommand(`await page.goto("${targetUrl}", { waitUntil: "domcontentloaded" });`);
+            await state.page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
             await sleep(3000);
             
             state.currentPhotoId = await sendStepPhoto(state.page, chatId, `✅ تم فتح الرابط بنجاح:\n${targetUrl}`, state.currentPhotoId);
@@ -843,4 +922,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت المطور يعمل الآن (البحث عن رابط + الترقيم التلقائي + 1125 مربع)...");
+console.log("🤖 البوت المطور يعمل الآن (دالة 2FA ديناميكية للتبويبات + تنظيف التكرار + 1125 مربع)...");
