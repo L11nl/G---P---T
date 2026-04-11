@@ -114,26 +114,47 @@ const GRID_ROWS = 15;
 const TOTAL_CELLS = GRID_COLS * GRID_ROWS; // 300 مربع
 
 async function drawGridAndScreenshot(page, chatId, caption) {
-    await page.evaluate(({cols, rows}) => {
-        if (document.getElementById('bot-grid-overlay')) return;
+    await page.evaluate(({ cols, rows }) => {
+        const oldGrid = document.getElementById('bot-grid-overlay');
+        if (oldGrid) oldGrid.remove();
+
         const grid = document.createElement('div');
         grid.id = 'bot-grid-overlay';
-        grid.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:999999;display:grid;';
+        grid.style.position = 'fixed';
+        grid.style.top = '0';
+        grid.style.left = '0';
+        grid.style.width = '100vw';
+        grid.style.height = '100vh';
+        grid.style.pointerEvents = 'none';
+        grid.style.zIndex = '2147483647';
+        grid.style.display = 'grid';
         grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
         grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
         for (let i = 0; i < cols * rows; i++) {
             const cell = document.createElement('div');
-            cell.style.cssText = 'border:1px solid rgba(255,255,0,0.4);background-color:rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:bold;text-shadow:1px 1px 2px #000, -1px -1px 2px #000;';
-            cell.innerText = i.toString();
+            cell.style.border = '1px solid rgba(255,255,0,0.7)';
+            cell.style.background = 'rgba(0,0,0,0.18)';
+            cell.style.display = 'flex';
+            cell.style.alignItems = 'center';
+            cell.style.justifyContent = 'center';
+            cell.style.color = '#fff';
+            cell.style.fontSize = '12px';
+            cell.style.fontWeight = 'bold';
+            cell.style.textShadow = '1px 1px 2px #000, -1px -1px 2px #000';
+            cell.textContent = String(i);
             grid.appendChild(cell);
         }
-        document.body.appendChild(grid);
-    }, {cols: GRID_COLS, rows: GRID_ROWS});
+
+        document.documentElement.appendChild(grid);
+    }, { cols: GRID_COLS, rows: GRID_ROWS });
+
+    await page.waitForSelector('#bot-grid-overlay', { state: 'attached', timeout: 3000 });
+    await page.waitForTimeout(300);
 
     const p = path.join(__dirname, `grid_${Date.now()}.png`);
     await page.screenshot({ path: p });
 
-    // إزالة الشبكة فوراً كي لا تتداخل مع النقرات البرمجية اللاحقة
     await page.evaluate(() => {
         const grid = document.getElementById('bot-grid-overlay');
         if (grid) grid.remove();
@@ -433,7 +454,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
 
 // ================= القوائم واستجابات البوت =================
 function sendMainMenu(chatId) {
-    bot.sendMessage(chatId, "👋 هلوووو بك! اختر العملية للبدء:", {
+    bot.sendMessage(chatId, "👋 كللللووووش بك! اختر العملية للبدء:", {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
