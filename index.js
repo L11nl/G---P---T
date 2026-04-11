@@ -341,7 +341,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 await page.keyboard.type("01012000", { delay: 150 });
             } else {
                 await page.keyboard.press('Tab');
-                await page.keyboard.type("01012000", { delay: 150 });
+                await page.keyboard.type("25", { delay: 150 });
             }
             const finishBtn = page.getByRole("button", { name: "Continue" }).last();
             if (await finishBtn.isVisible().catch(() => false)) await finishBtn.click({ force: true });
@@ -454,7 +454,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
 
 // ================= القوائم واستجابات البوت =================
 function sendMainMenu(chatId) {
-    bot.sendMessage(chatId, "👋 كللللووووش بك! اختر العملية للبدء:", {
+    bot.sendMessage(chatId, "👋 نورت ! اختر العملية للبدء:", {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
