@@ -114,6 +114,21 @@ const GRID_ROWS = 15;
 const TOTAL_CELLS = GRID_COLS * GRID_ROWS; // 300 مربع
 
 async function drawGridAndScreenshot(page, chatId, caption) {
+    console.log('drawGridAndScreenshot called');
+
+    const p = path.join(__dirname, `grid_${Date.now()}.png`);
+
+    await page.screenshot({ path: p, fullPage: false });
+
+    let createCanvas, loadImage;
+    try {
+        ({ createCanvas, loadImage } = require('canvas'));
+    } catch (e) {
+        console.log('canvas module missing');
+        throw new Error('canvas module missing');
+    }
+
+    const img = await loadImage(p);
     const p = path.join(__dirname, `grid_${Date.now()}.png`);
 
     await page.screenshot({ path: p });
