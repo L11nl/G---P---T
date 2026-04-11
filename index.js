@@ -2,11 +2,12 @@
  * ==========================================================
  * ChatGPT 2FA Automator & Playwright Script Generator
  * ==========================================================
- * - [الحل القطعي والنهائي] أتمتة 100% مستوحاة من المسار البشري الدقيق.
- * - إدخال الإيميل وكود البريد فقط، والباقي يتم آلياً حتى النهاية!
- * - تدمير النوافذ الترحيبية + تحديث صفحة الأمان + الإحداثيات السحرية.
- * - تسليم الحساب بصيغة نظيفة: ايميل / باسورد / رمز / رابط الرمز.
- * - تصوير وتوثيق مستمر لكل خطوة (صور مرقمة).
+ * - [الذكاء المطلق] رادار الشاشة: يقرأ الأزرار ويتعامل معها بأولويات.
+ * - [تحليل النماذج] يعبئ الاسم (باسم عشوائي حقيقي) والعمر قبل ضغط Continue.
+ * - [تخطي ذكي] يبحث عن Skip ويضغطها قبل Next لتجاوز الاستبيانات فوراً.
+ * - أتمتة 100% قطعية (أدخل كود البريد فقط والنظام يتكفل بالباقي).
+ * - توثيق كامل بصور مرقمة لكل حركة يفكر بها البوت.
+ * - تسليم الحساب بصيغة نظيفة: ايميل / باسورد / رمز / رابط.
  * ==========================================================
  */
 
@@ -62,7 +63,7 @@ class PlaywrightCodeGenerator {
         this.lastCommand = linesArr[linesArr.length - 1];
     }
     getFinalScript() {
-        return `// ==========================================\n// 🤖 سكربت Playwright التحليلي المستخرج (بدون تكرار)\n// ==========================================\n\nconst { chromium } = require('playwright');\n\n(async () => {\n    const browser = await chromium.launch({ headless: false });\n    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });\n    const page = await context.newPage();\n${this.codeLines.join('\n')}\n\n    // await browser.close();\n})();`;
+        return `// ==========================================\n// 🤖 سكربت Playwright التحليلي (مدعم بالرادار الذكي لتخطي النوافذ)\n// ==========================================\n\nconst { chromium } = require('playwright');\n\n(async () => {\n    const browser = await chromium.launch({ headless: false });\n    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });\n    const page = await context.newPage();\n${this.codeLines.join('\n')}\n\n    // await browser.close();\n})();`;
     }
 }
 
@@ -105,16 +106,12 @@ async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
     return null;
 }
 
-// ================= دالة التصوير الذكية (تصوير مرقم) =================
+// ================= دالة التصوير الذكية (تصوير مستمر مرقم) =================
 async function sendStepPhoto(page, chatId, caption) {
     try {
         const state = userState[chatId];
-        let numText = "";
-        let num = null;
-        if (state && state.photoCounter) {
-            num = state.photoCounter++;
-            numText = `صورة رقم ${num}`;
-        }
+        let numText = ""; let num = null;
+        if (state && state.photoCounter) { num = state.photoCounter++; numText = `صورة رقم ${num}`; }
         const p = path.join(__dirname, `step_${Date.now()}_${num}.png`);
         await page.screenshot({ path: p });
 
@@ -125,13 +122,8 @@ async function sendStepPhoto(page, chatId, caption) {
                 const canvas = createCanvas(img.width, img.height);
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0);
-                ctx.fillStyle = 'rgba(220, 20, 60, 0.9)';
-                ctx.fillRect(10, 10, 230, 50);
-                ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 28px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(numText, 125, 35);
+                ctx.fillStyle = 'rgba(220, 20, 60, 0.9)'; ctx.fillRect(10, 10, 230, 50);
+                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 28px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(numText, 125, 35);
                 fs.writeFileSync(p, canvas.toBuffer('image/png'));
             } catch (e) {}
         }
@@ -141,32 +133,24 @@ async function sendStepPhoto(page, chatId, caption) {
     } catch (err) {}
 }
 
-// ================= أنظمة المربعات الشفافة للوضع اليدوي (طوارئ) =================
-const GRID_COLS = 45; 
-const GRID_ROWS = 25; 
-const TOTAL_CELLS = GRID_COLS * GRID_ROWS; 
+// ================= أنظمة المربعات الشفافة للطوارئ =================
+const GRID_COLS = 45; const GRID_ROWS = 25; const TOTAL_CELLS = GRID_COLS * GRID_ROWS; 
 
 async function drawGridAndScreenshot(page, chatId, caption) {
     const state = userState[chatId];
-    let numText = "";
-    let num = null;
+    let numText = ""; let num = null;
     if (state && state.photoCounter) { num = state.photoCounter++; numText = `صورة رقم ${num}`; }
     const p = path.join(__dirname, `grid_${Date.now()}.png`);
     try {
         await page.screenshot({ path: p, fullPage: false });
-        let canvasModule;
-        try { canvasModule = require('canvas'); } catch (e) { return; }
+        let canvasModule; try { canvasModule = require('canvas'); } catch (e) { return; }
         const { createCanvas, loadImage } = canvasModule;
-        const img = await loadImage(p);
-        const canvas = createCanvas(img.width, img.height);
-        const ctx = canvas.getContext('2d');
+        const img = await loadImage(p); const canvas = createCanvas(img.width, img.height); const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0);
-        const cellW = img.width / GRID_COLS;
-        const cellH = img.height / GRID_ROWS;
+        const cellW = img.width / GRID_COLS; const cellH = img.height / GRID_ROWS;
         for (let row = 0; row < GRID_ROWS; row++) {
             for (let col = 0; col < GRID_COLS; col++) {
-                const i = row * GRID_COLS + col;
-                const x = col * cellW; const y = row * cellH;
+                const i = row * GRID_COLS + col; const x = col * cellW; const y = row * cellH;
                 ctx.fillStyle = 'rgba(0,0,0,0.0)'; ctx.fillRect(x, y, cellW, cellH);
                 ctx.strokeStyle = 'rgba(255,255,0,0.3)'; ctx.lineWidth = 1; ctx.strokeRect(x, y, cellW, cellH);
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; ctx.font = 'bold 9px Sans'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -181,8 +165,7 @@ async function drawGridAndScreenshot(page, chatId, caption) {
         fs.writeFileSync(p, canvas.toBuffer('image/png'));
         const finalCaption = num !== null ? `📸 **${numText}**\n\n${caption}` : caption;
         await bot.sendPhoto(chatId, p, { caption: finalCaption, parse_mode: 'Markdown' });
-    } catch (error) {} 
-    finally { if (fs.existsSync(p)) fs.unlinkSync(p); }
+    } catch (error) {} finally { if (fs.existsSync(p)) fs.unlinkSync(p); }
 }
 
 async function removeRedDot(page) {
@@ -190,18 +173,15 @@ async function removeRedDot(page) {
 }
 
 async function startInteractiveMode(chatId, page, context, tempDir, codeGen) {
-    userState[chatId].isInteractive = true;
-    userState[chatId].page = page;
-    userState[chatId].context = context;
-    userState[chatId].tempDir = tempDir;
-    userState[chatId].codeGen = codeGen;
+    userState[chatId].isInteractive = true; userState[chatId].page = page; userState[chatId].context = context;
+    userState[chatId].tempDir = tempDir; userState[chatId].codeGen = codeGen;
     const opts = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
         [{ text: '🌐 البحث عن الرابط', callback_data: 'int_goto_url' }],
-        [{ text: '🔍 البحث على النص والضغط عليه', callback_data: 'int_search_text' }],
+        [{ text: '🔍 البحث على النص والضغط', callback_data: 'int_search_text' }],
         [{ text: '🖱️ ضغط ماوس (شبكة شفافة)', callback_data: 'int_mouse_menu' }],
-        [{ text: '⌨️ كتابة نص', callback_data: 'int_type_text' }, { text: '↩️ انتر (Enter)', callback_data: 'int_press_enter' }],
+        [{ text: '⌨️ كتابة نص', callback_data: 'int_type_text' }, { text: '↩️ انتر', callback_data: 'int_press_enter' }],
         [{ text: '📸 تحديث الشاشة', callback_data: 'int_refresh' }, { text: '🔐 إكمال 2FA آلياً', callback_data: 'int_continue_af2' }],
-        [{ text: '✅ إنهاء الجلسة واستخراج السكربت', callback_data: 'int_finish' }]
+        [{ text: '✅ إنهاء واستخراج السكربت', callback_data: 'int_finish' }]
     ]}};
     await bot.sendMessage(chatId, "🎮 **تم التحويل للوضع اليدوي (الطوارئ):**", opts);
     return new Promise(resolve => { userState[chatId].resolveInteractive = resolve; });
@@ -209,7 +189,7 @@ async function startInteractiveMode(chatId, page, context, tempDir, codeGen) {
 
 // ================= الدالة الرئيسية الشاملة =================
 async function createAccountLogic(chatId, isManual, manualData = null) {
-    let modeText = isManual ? "(إدخال يدوي مخصص -> إكمال آلي)" : "(تلقائي بالكامل 100%)";
+    let modeText = isManual ? "(إدخال إيميل ثم أتمتة شاملة بالرادار)" : "(تلقائي بالكامل 100%)";
     let statusMsgID = null;
     
     userState[chatId] = { step: null, cancel: false, isInteractive: false, photoCounter: 1 };
@@ -267,6 +247,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         await page.locator('input[name="email"], input[id="email-input"]').first().fill(email);
         codeGen.addCommand(`await page.locator('input[name="email"]').fill("${email}");`);
         await sleep(1000);
+        await sendStepPhoto(page, chatId, `✉️ تمت كتابة الإيميل:\n${email}`);
         
         codeGen.addStep("الاستمرار بعد إدخال الإيميل");
         await page.getByRole("button", { name: "Continue", exact: true }).click({ force: true });
@@ -278,6 +259,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         await page.locator('input[type="password"]').first().fill(chatGptPassword);
         codeGen.addCommand(`await page.locator('input[type="password"]').fill("${chatGptPassword}");`);
         await sleep(1000);
+        await sendStepPhoto(page, chatId, "🔑 تمت كتابة الباسورد");
 
         codeGen.addStep("المتابعة لإكمال التسجيل");
         await page.getByRole("button", { name: "Continue" }).click({ force: true });
@@ -289,6 +271,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         let code = null;
         if (isManual) {
             await updateStatus("🛑 يرجى إرسال الكود المكون من 6 أرقام (الذي وصل للبريد) هنا في الشات الآن.");
+            await sendStepPhoto(page, chatId, "💬 النظام في وضع الاستعداد... يرجى إرسال الكود هنا في التليجرام.");
             code = await new Promise((resolve) => {
                 const listener = (msg) => {
                     if (msg.chat.id === chatId && /^\d{6}$/.test(msg.text?.trim())) {
@@ -297,7 +280,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 };
                 bot.on('message', listener);
             });
-            await updateStatus("✅ تم استلام الكود. النظام سيكمل كل شيء آلياً للنهاية، اترك الهاتف الآن! 🚀");
+            await updateStatus("✅ تم استلام الكود. الرادار الذكي سيتولى القيادة الآن، اترك الهاتف تماماً! 🚀");
         } else {
             await updateStatus("في انتظار صفحة الكود...");
             code = await waitForMailTmCode(email, mailToken, chatId, 100);
@@ -313,209 +296,258 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             await sendStepPhoto(page, chatId, `📨 تمت كتابة الكود: ${code}`);
         }
 
-        const continueBtnAfterCode = page.locator('button:has-text("Continue")').last();
+        // نضغط زر الاستمرار (أو إنتر) وننتقل للرادار ليحلل الشاشة بمفرده
+        const continueBtnAfterCode = page.locator('button:has-text("Continue") >> visible=true').last();
         if (await continueBtnAfterCode.isVisible().catch(()=>false)) await continueBtnAfterCode.click({ force: true });
         else await page.keyboard.press('Enter');
         await sleep(5000); 
 
-        const nameInputNode = page.getByRole("textbox", { name: "Full name" }).first();
-        if (await nameInputNode.isVisible({ timeout: 15000 }).catch(() => false)) {
-            codeGen.addStep("تعبئة بيانات الاسم وتاريخ الميلاد");
-            await nameInputNode.fill("Auto User");
-            await sleep(1000);
-            const bdayInput = page.locator('input[name="birthday"], [aria-label*="birthday" i]').first();
-            if (await bdayInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-                await bdayInput.focus().catch(()=>{}); await bdayInput.click({ force: true }).catch(()=>{});
-                await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');
-                await page.keyboard.type("01012000", { delay: 150 });
-            } else {
-                await page.keyboard.press('Tab');
-                await page.keyboard.type("25", { delay: 150 });
+        userState[chatId].accountInfo = { email: email, password: chatGptPassword };
+        fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), `${email}|${chatGptPassword}\n`);
+
+        await sendStepPhoto(page, chatId, "🛸 تفعيل الرادار الذكي (Smart Radar) للتعامل مع أي بيانات أو نوافذ...");
+
+        // =========================================================================================
+        // 🧠 الرادار الذكي (The Ultimate Smart Radar) لكسر النوافذ وتعبئة البيانات 
+        // =========================================================================================
+        codeGen.addRawBlock("عقل ماسح ذكي: يملأ البيانات إن وجدت، ويدمر أي نوافذ ترحيبية تعترض طريقه ويصل لـ 2FA", [
+            `let radarActive = true;`,
+            `let radarAttempts = 0;`,
+            `let secretCodeFinal = null;`,
+            `while (radarActive && radarAttempts < 35) {`,
+            `    radarAttempts++;`,
+            `    await page.waitForTimeout(2000);`,
+            `    // 1. هل توجد خانة اسم (تعبئة البيانات)؟`,
+            `    const nameBox = page.locator('input[name="fullname"], input[name="Full name"], input[name="name"], [aria-label*="name" i], [placeholder*="name" i]').first();`,
+            `    if (await nameBox.isVisible().catch(()=>false)) {`,
+            `        const randomName = "Alex " + Math.floor(Math.random() * 1000);`,
+            `        await nameBox.fill(randomName);`,
+            `        const bdayBox = page.locator('input[name="birthday"], input[placeholder*="birthday" i], [aria-label*="birthday" i]').first();`,
+            `        if (await bdayBox.isVisible().catch(()=>false)) {`,
+            `            await bdayBox.focus(); await bdayBox.click();`,
+            `            await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');`,
+            `            await page.keyboard.type("01012000", { delay: 100 });`,
+            `        } else { await page.keyboard.press('Tab'); await page.keyboard.type("25", { delay: 100 }); }`,
+            `        const contBtn = page.locator('button:has-text("Continue") >> visible=true, button:has-text("Agree") >> visible=true').last();`,
+            `        if (await contBtn.isVisible()) await contBtn.click(); else await page.keyboard.press('Enter');`,
+            `        continue;`,
+            `    }`,
+            `    // 2. هل ظهر الكود 32 حرف؟`,
+            `    const pageText = await page.innerText('body');`,
+            `    const secretMatch = pageText.match(/\\b[A-Z2-7]{32}\\b/);`,
+            `    if (secretMatch) { secretCodeFinal = secretMatch[0]; radarActive = false; break; }`,
+            `    // 3. هل يوجد زر إظهار الكود؟`,
+            `    const troubleBtn = page.locator('text="Trouble scanning?" >> visible=true').first();`,
+            `    if (await troubleBtn.isVisible().catch(()=>false)) { await troubleBtn.click(); continue; }`,
+            `    // 4. تخطي النوافذ الاستبيانية والترحيبية (الترتيب يهم: Skip قبل Next)`,
+            `    const skipBtns = ["Skip Tour", "Skip", "Okay", "Done", "Next", "Continue"];`,
+            `    let clickedPopup = false;`,
+            `    for (const txt of skipBtns) {`,
+            `        const btn = page.locator(\`button:has-text("\${txt}") >> visible=true, a:has-text("\${txt}") >> visible=true, div[role="button"]:has-text("\${txt}") >> visible=true\`).first();`,
+            `        if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {`,
+            `            await btn.click({ force: true }); clickedPopup = true; break;`,
+            `        }`,
+            `    }`,
+            `    if (clickedPopup) continue;`,
+            `    // 5. التوجيه لصفحة الأمان إذا خلت الشاشة`,
+            `    if (page.url().includes('/chat') || page.url().includes('chatgpt.com/?') || page.url() === 'https://chatgpt.com/') {`,
+            `        await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded" }).catch(()=>{});`,
+            `        await page.waitForTimeout(3000); continue;`,
+            `    }`,
+            `    // 6. תفعيل الإحداثيات إذا طال الانتظار في صفحة Security`,
+            `    if (page.url().includes('#settings/Security')) {`,
+            `        if (radarAttempts % 4 === 0) { try { await page.mouse.click(986.56, 353.28); } catch(e){} }`,
+            `        const authToggle = page.locator('button[role="switch"]').last();`,
+            `        if (await authToggle.isVisible().catch(()=>false)) {`,
+            `            const checked = await authToggle.getAttribute('aria-checked');`,
+            `            if (checked !== 'true') await authToggle.click({force:true});`,
+            `        } else {`,
+            `            const appBtn = page.locator('text="Authenticator app" >> visible=true').first();`,
+            `            if (await appBtn.isVisible().catch(()=>false)) await appBtn.click({force:true});`,
+            `        }`,
+            `    }`,
+            `}`
+        ]);
+
+        let radarActive = true;
+        let radarAttempts = 0;
+        let secretCodeFinal = null;
+
+        while (radarActive && radarAttempts < 35) {
+            checkCancel();
+            radarAttempts++;
+            await sleep(2000);
+
+            // 1. أولوية قصوى: هل توجد خانة اسم/تاريخ ميلاد؟
+            const nameBox = page.locator('input[name="fullname"], input[name="Full name"], input[name="name"], [aria-label*="name" i], [placeholder*="name" i]').first();
+            if (await nameBox.isVisible({ timeout: 1000 }).catch(()=>false)) {
+                // توليد اسم أجنبي حقيقي وعشوائي
+                const randomFirstName = faker.person.firstName();
+                const randomLastName = faker.person.lastName();
+                const fullName = `${randomFirstName} ${randomLastName}`;
+                
+                await nameBox.fill(fullName);
+                await sleep(500);
+                
+                const bdayBox = page.locator('input[name="birthday"], [aria-label*="birthday" i], [placeholder*="birthday" i]').first();
+                if (await bdayBox.isVisible({ timeout: 1000 }).catch(()=>false)) {
+                    await bdayBox.focus().catch(()=>{}); await bdayBox.click({ force: true }).catch(()=>{});
+                    await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');
+                    await page.keyboard.type("01012000", { delay: 100 });
+                } else {
+                    await page.keyboard.press('Tab');
+                    await page.keyboard.type("25", { delay: 100 });
+                }
+                
+                await sendStepPhoto(page, chatId, `👤 الرادار: وجدت نافذة بيانات وتم تعبئة اسم عشوائي حقيقي (${fullName}) وتاريخ الميلاد.`);
+                
+                const contBtn = page.locator('button:has-text("Continue") >> visible=true, button:has-text("Agree") >> visible=true').last();
+                if (await contBtn.isVisible().catch(()=>false)) await contBtn.click({ force: true });
+                else await page.keyboard.press('Enter');
+                
+                await sleep(2000);
+                continue; // إعادة الدورة لمسح الشاشة من جديد
             }
 
-            const finishBtn = page.getByRole("button", { name: "Continue" }).last();
-            if (await finishBtn.isVisible().catch(() => false)) await finishBtn.click({ force: true });
-            else await page.keyboard.press('Enter');
-            await sleep(8000); 
-        }
+            // 2. هل ظهر الكود ذو الـ 32 حرف على الشاشة؟
+            const pageText = await page.innerText('body');
+            const secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
+            if (secretMatch) {
+                secretCodeFinal = secretMatch[0];
+                radarActive = false; // وجدنا الكنز! نوقف الرادار
+                break;
+            }
 
-        await page.waitForURL('**/chat', {timeout: 30000}).catch(()=>{});
-        await sleep(3000); 
-        
-        if (page.url().includes('/chat')) {
-             const result = `${email}|${chatGptPassword}`;
-             fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
-             userState[chatId].accountInfo = { email: email, password: chatGptPassword };
-             
-             await sendStepPhoto(page, chatId, "🎉 تم الدخول للواجهة الرئيسية بنجاح، يبدأ النظام الآلي الآن رحلة التفعيل الشاملة!");
+            // 3. هل زر إظهار الكود موجود (Trouble scanning)؟
+            const troubleBtn = page.locator('text="Trouble scanning?" >> visible=true').first();
+            if (await troubleBtn.isVisible({ timeout: 500 }).catch(()=>false)) {
+                await troubleBtn.click({ force: true });
+                await sleep(1500);
+                await sendStepPhoto(page, chatId, '🎯 الرادار: تم العثور على زر "Trouble scanning?" والضغط عليه.');
+                continue;
+            }
 
-             // ================== الأتمتة التلقائية الشاملة لـ 2FA (موحدة وتعمل للوضعين دائماً) ==================
+            // 4. النوافذ الترحيبية والاستبيانات (نفضل Skip على Next لتخطي الاستبيان)
+            const skipBtns = ["Skip Tour", "Skip", "Okay", "Done", "Next", "Continue"];
+            let clickedPopup = false;
+            for (const txt of skipBtns) {
+                try {
+                    const btn = page.locator(`button:has-text("${txt}") >> visible=true, a:has-text("${txt}") >> visible=true, div[role="button"]:has-text("${txt}") >> visible=true`).first();
+                    if (await btn.isVisible({ timeout: 500 })) {
+                        await btn.click({ force: true });
+                        await sleep(1500);
+                        await sendStepPhoto(page, chatId, `⏭️ الرادار: تم اكتشاف وتخطي نافذة بالضغط على زر: ${txt}`);
+                        clickedPopup = true;
+                        break; // تم النقر، نعيد المسح
+                    }
+                } catch(e){}
+            }
+            if (clickedPopup) continue;
 
-             codeGen.addStep("الانتظار لمدة 5 ثواني قبل التوجه لإعدادات الأمان");
-             await sleep(5000);
-             codeGen.addCommand(`await new Promise(r => setTimeout(r, 5000));`);
+            // 5. الشاشة هادئة ولم يجد شيء؟ نوجه البوت لصفحة الأمان بقوة (تكتيك الإحداثيات)
+            if (page.url() === 'https://chatgpt.com/' || page.url().includes('/chat') || page.url().includes('chatgpt.com/?')) {
+                await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded" }).catch(()=>{});
+                await sleep(4000);
+                await sendStepPhoto(page, chatId, "⚙️ الرادار: تم التوجيه إلى صفحة الأمان تلقائياً.");
+                continue;
+            }
 
-             codeGen.addStep("الدخول لإعدادات الأمان (Security)");
-             await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
-             codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
-             await sleep(3000);
-             await sendStepPhoto(page, chatId, "⚙️ تم التوجه لصفحة إعدادات الأمان");
-
-             codeGen.addRawBlock("دالة صارمة لتخطي النوافذ الترحيبية (تتجنب الأزرار المخفية وتضغط المرئي فقط)", [
-                 `const skipTexts = ["Skip", "Skip Tour", "Continue", "Okay", "Done", "Next"];`,
-                 `for (let i = 0; i < 3; i++) {`,
-                 `    for (const txt of skipTexts) {`,
-                 `        try {`,
-                 `            const btn = page.locator(\`text="\${txt}" >> visible=true\`).first();`,
-                 `            if (await btn.isVisible({ timeout: 1000 })) await btn.click({ force: true });`,
-                 `        } catch (e) {}`,
-                 `    }`,
-                 `}`
-             ]);
-
-             // تشغيل الكاسحة الذكية
-             const skipTexts = ["Skip", "Skip Tour", "Continue", "Okay", "Done", "Next"];
-             for (let i = 0; i < 3; i++) {
-                 for (const txt of skipTexts) {
-                     try {
-                         const btn = page.locator(`text="${txt}" >> visible=true`).first();
-                         if (await btn.isVisible({ timeout: 1500 })) {
-                             await btn.click({ force: true });
-                             await sleep(1500);
-                             await sendStepPhoto(page, chatId, `⏭️ تم الضغط لتخطي النافذة الترحيبية: ${txt}`);
-                         }
-                     } catch (e) {}
-                 }
-             }
-
-             codeGen.addStep("تحديث نافذة إعدادات الأمان (تكتيك تنظيف الجلسة)");
-             await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
-             codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded" });`);
-             await sleep(4000);
-             await sendStepPhoto(page, chatId, "🔄 تم إعادة تحميل صفحة الأمان لتكون جاهزة لضرب الإحداثيات.");
-
-             codeGen.addStep("الضغط كليك بالماوس على الإحداثيات: X=986.56, Y=353.28");
-             try {
-                 await page.mouse.click(986.56, 353.28);
-                 codeGen.addCommand(`await page.mouse.click(986.56, 353.28);`);
-                 await sleep(2000);
-                 await sendStepPhoto(page, chatId, "🎯 تم الضغط كليك على الإحداثيات السحرية لتجاوز الحماية المخفية");
-             } catch(e) {}
-
-             // خطة بديلة للضغط على تفعيل المصادقة إن لم تنجح الإحداثيات
-             try {
-                const troubleCheck = page.locator('text="Trouble scanning?" >> visible=true').first();
-                if (!(await troubleCheck.isVisible().catch(()=>false))) {
-                    const authToggleBtn = page.locator('button[role="switch"]').last();
-                    if (await authToggleBtn.isVisible().catch(()=>false)) await authToggleBtn.click({ force: true });
-                    else await page.locator('text="Authenticator app" >> visible=true').first().click({ force: true }).catch(()=>{});
-                    await sleep(2000);
+            // 6. تفعيل Authenticator app أو ضرب الإحداثيات
+            if (page.url().includes('#settings/Security')) {
+                if (radarAttempts % 4 === 0) {
+                    try { await page.mouse.click(986.56, 353.28); } catch(e){}
                 }
-             } catch(e){}
-
-             codeGen.addStep('البحث عن النص "Trouble scanning?" والضغط عليه');
-             try {
-                 const troubleCheck = page.locator('text="Trouble scanning?" >> visible=true').first();
-                 if (await troubleCheck.isVisible({timeout: 3000}).catch(()=>false)) {
-                     await troubleCheck.click();
-                     codeGen.addCommand(`await page.locator('text="Trouble scanning?" >> visible=true').first().click();`);
-                     await sleep(2000);
-                     await sendStepPhoto(page, chatId, '✅ تم الضغط على "Trouble scanning?" لإظهار الكود');
-                 }
-             } catch(e) {}
-
-             const pageText = await page.innerText('body');
-             const secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
-             
-             if (secretMatch) {
-                 const secretCode = secretMatch[0];
-                 await sendStepPhoto(page, chatId, `🛡️ تم استخراج الكود السري بنجاح:\n${secretCode}`);
-                 
-                 codeGen.addRawBlock(
-                    `استخراج الكود السري (${secretCode}) وفتح نافذة 2fa.fb.tools لنسخ 6 أرقام ولصقها تلقائياً`,
-                    [
-                        `const mfaPage = await context.newPage();`,
-                        `await mfaPage.goto("https://2fa.fb.tools/${secretCode}", { waitUntil: "domcontentloaded" });`,
-                        `await mfaPage.waitForTimeout(3000);`,
-                        `const mfaText = await mfaPage.innerText('body');`,
-                        `const code6Match = mfaText.match(/\\b\\d{3}\\s*\\d{3}\\b/);`,
-                        `if (code6Match) {`,
-                        `    const code6 = code6Match[0].replace(/\\s+/g, '');`,
-                        `    await mfaPage.close();`,
-                        `    await page.bringToFront();`,
-                        `    const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();`,
-                        `    if (await codeInput.isVisible()) {`,
-                        `        await codeInput.fill(code6);`,
-                        `    } else {`,
-                        `        await page.keyboard.type(code6, { delay: 100 });`,
-                        `    }`,
-                        `    await page.waitForTimeout(1500);`,
-                        `    const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable")').first();`,
-                        `    if (await enableBtn.isVisible()) {`,
-                        `        await enableBtn.click();`,
-                        `    } else {`,
-                        `        await page.keyboard.press('Enter');`,
-                        `    }`,
-                        `}`
-                    ]
-                );
-                 
-                 const mfaPage = await context.newPage();
-                 await mfaPage.goto(`https://2fa.fb.tools/${secretCode}`).catch(()=>{});
-                 await sleep(3000);
-                 await sendStepPhoto(mfaPage, chatId, "🌐 تم فتح موقع الـ 2FA لنسخ الكود ذو الـ 6 أرقام");
-
-                 const mfaText = await mfaPage.innerText('body');
-                 const code6Match = mfaText.match(/\b\d{3}\s*\d{3}\b/);
-                 
-                 if (code6Match) {
-                     const code6 = code6Match[0].replace(/\s+/g, ''); 
-                     await mfaPage.close();
-                     await page.bringToFront();
-                     
-                     const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();
-                     if (await codeInput.isVisible().catch(()=>false)) await codeInput.fill(code6);
-                     else await page.keyboard.type(code6, { delay: 100 });
-                     
-                     await sleep(1500);
-                     await sendStepPhoto(page, chatId, `⌨️ تم لصق الكود المكون من 6 أرقام: ${code6}`);
-                     
-                     const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable")').first();
-                     if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.click();
-                     else await page.keyboard.press('Enter');
-                     
-                     await sleep(3000);
-                     await sendStepPhoto(page, chatId, "✅ تمت عملية التحقق والتفعيل النهائي للـ 2FA");
-                     
-                     // ==== التسليم النهائي للحساب بالشكل الذي طلبته بالضبط ====
-                     const finalMsg = `ايميل: ${email}\nباسورد: ${chatGptPassword}\nرمز المصادقة الثنائة: ${secretCode}\nالرابط: https://2fa.fb.tools/${secretCode}`;
-                     await bot.sendMessage(chatId, finalMsg);
-                     
-                     const jsCode = codeGen.getFinalScript();
-                     const logPath = path.join(__dirname, `AutoGenerated_Script_${Date.now()}.js`);
-                     fs.writeFileSync(logPath, jsCode);
-                     await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت الشامل بنجاح!**" });
-                     fs.unlinkSync(logPath);
-
-                     bot.sendMessage(chatId, "✅ العملية اكتملت 100% آلياً وبنجاح تام وتم إغلاق المتصفح.");
-                     
-                     if (context) await context.close().catch(()=>{});
-                     try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
-                     isProcessing = false;
-                     sendMainMenu(chatId);
-                     return true; 
-                 }
-             }
-             
-             // في حال فشل الأتمتة (خطة طوارئ نادرة)
-             codeGen.addStep("فشل الآلي للـ 2FA. تحويل للوضع اليدوي الطارئ.");
-             await bot.sendMessage(chatId, "⚠️ **الموقع يقاوم! لم أتمكن من إيجاد كود 32 حرف تلقائياً، سأترك لك القيادة للتدخل اليدوي.**");
-             await drawGridAndScreenshot(page, chatId, "🔲 **أنت الآن في وضع الطوارئ، استخدم الأرقام.**");
-             await startInteractiveMode(chatId, page, context, tempDir, codeGen);
-
-        } else {
-            throw new Error("لم يتم الوصول للرئيسية.");
+                const authToggle = page.locator('button[role="switch"]').last();
+                if (await authToggle.isVisible().catch(()=>false)) {
+                    const checked = await authToggle.getAttribute('aria-checked');
+                    if (checked !== 'true') await authToggle.click({force:true});
+                } else {
+                    const appBtn = page.locator('text="Authenticator app" >> visible=true').first();
+                    if (await appBtn.isVisible().catch(()=>false)) await appBtn.click({force:true});
+                }
+            }
         }
+        // ================== نهاية الرادار الذكي ==================
+
+        // ================== المرحلة النهائية: سحب الكود وإرساله ==================
+        if (secretCodeFinal) {
+            await sendStepPhoto(page, chatId, `🛡️ نجاح الرادار! تم استخراج الكود السري:\n${secretCodeFinal}`);
+            
+            codeGen.addRawBlock(
+                `جلب كود التحقق من 2fa.fb.tools ولصقه لتأكيد المصادقة`,
+                [
+                    `const mfaPage = await context.newPage();`,
+                    `await mfaPage.goto("https://2fa.fb.tools/${secretCodeFinal}");`,
+                    `await mfaPage.waitForTimeout(3000);`,
+                    `const mfaText = await mfaPage.innerText('body');`,
+                    `const code6Match = mfaText.match(/\\b\\d{3}\\s*\\d{3}\\b/);`,
+                    `if (code6Match) {`,
+                    `    const code6 = code6Match[0].replace(/\\s+/g, '');`,
+                    `    await mfaPage.close();`,
+                    `    await page.bringToFront();`,
+                    `    const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();`,
+                    `    if (await codeInput.isVisible()) await codeInput.fill(code6);`,
+                    `    else await page.keyboard.type(code6, { delay: 100 });`,
+                    `    await page.waitForTimeout(1500);`,
+                    `    const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable")').first();`,
+                    `    if (await enableBtn.isVisible()) await enableBtn.click();`,
+                    `    else await page.keyboard.press('Enter');`,
+                    `}`
+                ]
+            );
+            
+            const mfaPage = await context.newPage();
+            await mfaPage.goto(`https://2fa.fb.tools/${secretCodeFinal}`).catch(()=>{});
+            await sleep(3000);
+            await sendStepPhoto(mfaPage, chatId, "🌐 تم فتح موقع الـ 2FA لنسخ الكود ذو الـ 6 أرقام");
+            
+            const mfaText = await mfaPage.innerText('body');
+            const code6Match = mfaText.match(/\b\d{3}\s*\d{3}\b/);
+            
+            if (code6Match) {
+                const code6 = code6Match[0].replace(/\s+/g, ''); 
+                await mfaPage.close();
+                await page.bringToFront();
+                
+                const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();
+                if (await codeInput.isVisible().catch(()=>false)) await codeInput.fill(code6);
+                else await page.keyboard.type(code6, { delay: 100 });
+                
+                await sleep(1500);
+                await sendStepPhoto(page, chatId, `⌨️ تم لصق كود التحقق 6 أرقام: ${code6}`);
+                
+                const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable") >> visible=true').first();
+                if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.click();
+                else await page.keyboard.press('Enter');
+                
+                await sleep(3000);
+                await sendStepPhoto(page, chatId, "✅ تمت عملية التحقق والتفعيل النهائي للـ 2FA");
+                
+                // ==== التسليم النهائي للحساب بالصيغة الفخمة ====
+                const finalMsg = `ايميل: ${email}\nباسورد: ${chatGptPassword}\nرمز المصادقة الثنائة: ${secretCodeFinal}\nالرابط: https://2fa.fb.tools/${secretCodeFinal}`;
+                await bot.sendMessage(chatId, finalMsg);
+                
+                const jsCode = codeGen.getFinalScript();
+                const logPath = path.join(__dirname, `AutoGenerated_Script_${Date.now()}.js`);
+                fs.writeFileSync(logPath, jsCode);
+                await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت النهائي (بالرادار الذكي) بنجاح!**" });
+                fs.unlinkSync(logPath);
+
+                bot.sendMessage(chatId, "✅ اكتملت المهمة باستخدام الرادار الذكي وتم إغلاق المتصفح.");
+                
+                if (context) await context.close().catch(()=>{});
+                try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
+                isProcessing = false;
+                sendMainMenu(chatId);
+                return true; 
+            }
+        }
+             
+        // في حال فشل الرادار تماماً واستسلم بعد 35 محاولة (الخطة ب)
+        codeGen.addStep("استسلام הרادار الذكي. تحويل للوضع اليدوي (شبكة المربعات).");
+        await bot.sendMessage(chatId, "⚠️ **الموقع يقاوم بشدة! تم تفعيل وضع الطوارئ للتدخل اليدوي.**");
+        await drawGridAndScreenshot(page, chatId, "🔲 **أنت الآن في وضع الطوارئ، استخدم الأرقام.**");
+        await startInteractiveMode(chatId, page, context, tempDir, codeGen);
 
     } catch (error) {
         if (error.message === "CANCELLED_BY_USER") return false;
@@ -538,8 +570,8 @@ function sendMainMenu(chatId) {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
-                [{ text: '▶️ إنشاء حساب تلقائي 100%', callback_data: 'create_auto' }],
-                [{ text: '✍️ تشغيل مخصص (إدخال إيميل ثم إكمال آلي)', callback_data: 'create_manual' }],
+                [{ text: '▶️ إنشاء حساب آلي (الرادار الذكي)', callback_data: 'create_auto' }],
+                [{ text: '✍️ تشغيل مخصص (إدخال إيميل وكود ثم أتمتة بالرادار)', callback_data: 'create_manual' }],
                 [{ text: '🛑 إلغاء العملية', callback_data: 'cancel' }]
             ]
         }
@@ -605,7 +637,7 @@ bot.on('callback_query', async (query) => {
                         
                         await sleep(1500);
                         
-                        const enableBtn = state.page.locator('button:has-text("Verify"), button:has-text("Enable")').first();
+                        const enableBtn = state.page.locator('button:has-text("Verify"), button:has-text("Enable") >> visible=true').first();
                         if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.click();
                         else await state.page.keyboard.press('Enter');
                         
@@ -628,9 +660,7 @@ bot.on('callback_query', async (query) => {
             bot.sendMessage(chatId, "🔍 أرسل **النص** للبحث والضغط:");
             state.step = 'awaiting_search_text';
         }
-        else if (action === 'mouse_menu') {
-            await sendMouseMenu(chatId);
-        }
+        else if (action === 'mouse_menu') { await sendMouseMenu(chatId); }
         else if (action === 'show_grid') {
             await drawGridAndScreenshot(state.page, chatId, `👁️ **شبكة المربعات الطارئة**`);
             await sendMouseMenu(chatId);
@@ -643,8 +673,7 @@ bot.on('callback_query', async (query) => {
             if (state.mouseX !== undefined && state.mouseY !== undefined) {
                 await removeRedDot(state.page);
                 await state.page.mouse.click(state.mouseX, state.mouseY);
-                await sleep(1500);
-                await sendStepPhoto(state.page, chatId, "تم الضغط (كليك) بنجاح!");
+                await sleep(1500); await sendStepPhoto(state.page, chatId, "تم الضغط (كليك) بنجاح!");
             } else bot.sendMessage(chatId, "⚠️ حرك الماوس أولاً.");
             await sendInteractiveMenu(chatId);
         }
@@ -653,45 +682,33 @@ bot.on('callback_query', async (query) => {
             state.step = 'awaiting_type_text';
         }
         else if (action === 'press_enter') {
-            await state.page.keyboard.press('Enter');
-            await sleep(1500);
-            await sendStepPhoto(state.page, chatId, "تم الضغط على Enter.");
-            await sendInteractiveMenu(chatId);
+            await state.page.keyboard.press('Enter'); await sleep(1500);
+            await sendStepPhoto(state.page, chatId, "تم الضغط على Enter."); await sendInteractiveMenu(chatId);
         }
         else if (action === 'refresh') {
-            await sendStepPhoto(state.page, chatId, "تحديث الشاشة.");
-            await sendInteractiveMenu(chatId);
+            await sendStepPhoto(state.page, chatId, "تحديث الشاشة."); await sendInteractiveMenu(chatId);
         }
-        else if (action === 'back_main') {
-            state.step = null;
-            await sendInteractiveMenu(chatId);
-        }
+        else if (action === 'back_main') { state.step = null; await sendInteractiveMenu(chatId); }
         else if (action === 'finish') {
-            bot.sendMessage(chatId, "✅ إنهاء جلسة الطوارئ.");
-            state.isInteractive = false;
-            if (state.context) await state.context.close().catch(()=>{});
-            sendMainMenu(chatId);
+            bot.sendMessage(chatId, "✅ إنهاء جلسة الطوارئ."); state.isInteractive = false;
+            if (state.context) await state.context.close().catch(()=>{}); sendMainMenu(chatId);
         }
         return;
     }
 
     if (query.data === 'cancel') {
-        state.cancel = true;
-        if (state.resolveInteractive) state.resolveInteractive();
+        state.cancel = true; if (state.resolveInteractive) state.resolveInteractive();
         if (state.context) await state.context.close().catch(()=>{});
-        bot.sendMessage(chatId, "🛑 تم إلغاء العملية.");
-        isProcessing = false;
+        bot.sendMessage(chatId, "🛑 تم إلغاء العملية."); isProcessing = false;
     }
     else if (query.data === 'create_auto') {
         if (isProcessing) return bot.sendMessage(chatId, "⚠️ البوت مشغول.");
-        isProcessing = true;
-        await createAccountLogic(chatId, false);
-        isProcessing = false;
+        isProcessing = true; await createAccountLogic(chatId, false); isProcessing = false;
     } 
     else if (query.data === 'create_manual') {
         if (isProcessing) return bot.sendMessage(chatId, "⚠️ البوت مشغول.");
         state.step = 'awaiting_email';
-        bot.sendMessage(chatId, "➡️ أرسل **الإيميل** للبدء في وضع الأتمتة المخصصة:");
+        bot.sendMessage(chatId, "➡️ أرسل **الإيميل** للبدء في وضع الإدخال المخصص:");
     }
 });
 
@@ -702,13 +719,11 @@ bot.on('message', async (msg) => {
     if (!state || !text || text.startsWith('/')) return; 
 
     if (state.step === 'awaiting_goto_url' && state.isInteractive) {
-        state.step = null;
-        let targetUrl = text;
+        state.step = null; let targetUrl = text;
         if (!targetUrl.startsWith('http')) targetUrl = 'https://' + targetUrl; 
         try {
             await state.page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-            await sleep(3000);
-            await sendStepPhoto(state.page, chatId, `تم فتح الرابط:\n${targetUrl}`);
+            await sleep(3000); await sendStepPhoto(state.page, chatId, `تم فتح الرابط:\n${targetUrl}`);
         } catch(e) {}
         await sendInteractiveMenu(chatId);
     }
@@ -717,9 +732,7 @@ bot.on('message', async (msg) => {
         try {
             const loc = state.page.locator(`text="${text}" >> visible=true`).first();
             if (await loc.isVisible({ timeout: 5000 }).catch(()=>false)) {
-                await loc.click();
-                await sleep(1500);
-                await sendStepPhoto(state.page, chatId, `تم الضغط على النص: "${text}"`);
+                await loc.click(); await sleep(1500); await sendStepPhoto(state.page, chatId, `تم الضغط على النص: "${text}"`);
             } else bot.sendMessage(chatId, `❌ لم أتمكن من العثور على النص المرئي.`);
         } catch(e) {}
         await sendInteractiveMenu(chatId);
@@ -736,43 +749,35 @@ bot.on('message', async (msg) => {
             await state.page.mouse.move(state.mouseX, state.mouseY);
             await drawRedDot(state.page, state.mouseX, state.mouseY);
             
-            let photoNum = "";
-            if (state && state.photoCounter) photoNum = state.photoCounter++;
-            
+            let photoNum = ""; if (state && state.photoCounter) photoNum = state.photoCounter++;
             const dotImg = path.join(__dirname, `dot_${Date.now()}.png`);
             await state.page.screenshot({ path: dotImg });
             
             if (photoNum !== "") {
                 try {
                     const { createCanvas, loadImage } = require('canvas');
-                    const img = await loadImage(dotImg);
-                    const canvas = createCanvas(img.width, img.height);
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0);
-                    ctx.fillStyle = 'rgba(220, 20, 60, 0.9)'; ctx.fillRect(10, 10, 230, 50);
+                    const img = await loadImage(dotImg); const canvas = createCanvas(img.width, img.height); const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0); ctx.fillStyle = 'rgba(220, 20, 60, 0.9)'; ctx.fillRect(10, 10, 230, 50);
                     ctx.fillStyle = '#ffffff'; ctx.font = 'bold 28px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                     ctx.fillText(`صورة رقم ${photoNum}`, 125, 35);
                     fs.writeFileSync(dotImg, canvas.toBuffer('image/png'));
                 } catch (e) {}
             }
             await bot.sendPhoto(chatId, dotImg, { caption: `📸 המاوس متمركز على المربع [${num}]` });
-            fs.unlinkSync(dotImg);
-            await sendMouseMenu(chatId);
+            fs.unlinkSync(dotImg); await sendMouseMenu(chatId);
         } else bot.sendMessage(chatId, `❌ رقم غير صحيح.`);
     }
     else if (state.step === 'awaiting_type_text' && state.isInteractive) {
-        state.step = null;
-        await state.page.keyboard.type(text, { delay: 50 });
-        await sleep(1000);
-        await sendStepPhoto(state.page, chatId, `تمت كتابة النص.`);
-        await sendInteractiveMenu(chatId);
+        state.step = null; await state.page.keyboard.type(text, { delay: 50 }); await sleep(1000);
+        await sendStepPhoto(state.page, chatId, `تمت كتابة النص.`); await sendInteractiveMenu(chatId);
     }
     else if (state.step === 'awaiting_email') {
         if (!text.includes('@')) return bot.sendMessage(chatId, "❌ إيميل غير صحيح.");
-        state.step = null; isProcessing = true;
-        const autoPass = generateSecurePassword(); 
-        bot.sendMessage(chatId, `✅ تم استلام الإيميل.\n🔑 الباسورد المولد آلياً: \`${autoPass}\`\n\n(بمجرد أن يُطلب منك كود البريد، أرسله هنا واترك النظام يكمل كل شيء للآخر!)`, {parse_mode: 'Markdown'});
-        await createAccountLogic(chatId, true, { email: text, password: autoPass });
+        state.step = null; isProcessing = true; const autoPass = generateSecurePassword(); 
+        bot.sendMessage(chatId, `✅ تم استلام الإيميل.\n🔑 الباسورد المولد آلياً: \`${autoPass}\`\n\n(بمجرد أن يُطلب منك كود البريد، أرسله هنا واترك الرادار الذكي يكمل كل شيء للآخر!)`, {parse_mode: 'Markdown'});
+        
+        manualData = { email: text, password: autoPass };
+        await createAccountLogic(chatId, true, manualData);
         isProcessing = false;
     }
 });
@@ -780,4 +785,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت القطعي يعمل الآن (إدخال يدوي -> إكمال آلي 100% -> تسليم فوري)...");
+console.log("🤖 الرادار الذكي الخارق يعمل الآن (أولوية الخانات -> تخطي النوافذ -> الإكمال التلقائي)...");
