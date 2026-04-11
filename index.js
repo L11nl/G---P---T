@@ -3,10 +3,10 @@
  * ChatGPT 2FA Automator & Playwright Script Generator
  * ==========================================================
  * - تم حل مشكلة تحديث العمر (Age) وكتابة 25 والضغط على Finish.
+ * - [تحديث]: إصلاح نظام المربعات الشفافة واسترجاع الشكل الأحمر الواضح (100 مربع).
+ * - إضافة مهلة زمنية (Delay) لضمان رسم الشبكة قبل التصوير (تجنب الشاشة الفارغة).
  * - أداة توليد أكواد برمجية دقيقة (Playwright Code Builder).
- * - نظام تفاعلي قوي: بحث عن نصوص وضغطها برمجياً + كيبورد.
- * - نظام ماوس دقيق (300 مربع شفاف) مع نقطة حمراء 🔴 للتأكيد.
- * - رسم الشبكة تلقائياً إذا تعذر إيجاد كود الـ 32 حرف.
+ * - نظام تفاعلي قوي: بحث عن نصوص وضغطها برمجياً + كيبورد + كليك.
  * ==========================================================
  */
 
@@ -109,36 +109,60 @@ async function sendStepPhoto(page, chatId, caption, previousPhotoId = null) {
 }
 
 // ================= أنظمة المربعات الشفافة الدقيقة =================
-const GRID_COLS = 20;
-const GRID_ROWS = 15;
-const TOTAL_CELLS = GRID_COLS * GRID_ROWS; // 300 مربع
+const GRID_COLS = 10;
+const GRID_ROWS = 10;
+const TOTAL_CELLS = 100; // 100 مربع 10x10 ليكون واضحاً
 
 async function drawGridAndScreenshot(page, chatId, caption) {
+    // 1- رسم المربعات بوضوح وباللون الأحمر
     await page.evaluate(({cols, rows}) => {
-        if (document.getElementById('bot-grid-overlay')) return;
+        const existing = document.getElementById('bot-grid-overlay');
+        if (existing) existing.remove();
+
         const grid = document.createElement('div');
         grid.id = 'bot-grid-overlay';
-        grid.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:999999;display:grid;';
+        grid.style.position = 'fixed';
+        grid.style.top = '0';
+        grid.style.left = '0';
+        grid.style.width = '100vw';
+        grid.style.height = '100vh';
+        grid.style.pointerEvents = 'none'; // لكي لا يمنع النقرات
+        grid.style.zIndex = '2147483647'; // أعلى طبقة ممكنة للظهور فوق النوافذ المنبثقة
+        grid.style.display = 'grid';
         grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
         grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+        
         for (let i = 0; i < cols * rows; i++) {
             const cell = document.createElement('div');
-            cell.style.cssText = 'border:1px solid rgba(255,255,0,0.4);background-color:rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:bold;text-shadow:1px 1px 2px #000, -1px -1px 2px #000;';
+            cell.style.border = '1px solid rgba(255, 0, 0, 0.5)';
+            cell.style.backgroundColor = 'rgba(255, 0, 0, 0.05)';
+            cell.style.display = 'flex';
+            cell.style.alignItems = 'center';
+            cell.style.justifyContent = 'center';
+            cell.style.color = 'red'; // الخط الأحمر الواضح
+            cell.style.fontSize = '24px'; // خط كبير وواضح
+            cell.style.fontWeight = 'bold';
+            cell.style.textShadow = '1px 1px 0px white, -1px -1px 0px white';
             cell.innerText = i.toString();
             grid.appendChild(cell);
         }
         document.body.appendChild(grid);
     }, {cols: GRID_COLS, rows: GRID_ROWS});
 
+    // 2- تأخير لضمان رندر (Render) المتصفح للشبكة بالكامل قبل التصوير
+    await sleep(800);
+
+    // 3- التقاط الصورة للشبكة
     const p = path.join(__dirname, `grid_${Date.now()}.png`);
     await page.screenshot({ path: p });
 
-    // إزالة الشبكة فوراً كي لا تتداخل مع النقرات البرمجية اللاحقة
+    // 4- إزالة الشبكة فوراً كي لا تتداخل مع النقرات البرمجية اللاحقة
     await page.evaluate(() => {
         const grid = document.getElementById('bot-grid-overlay');
         if (grid) grid.remove();
     });
 
+    // 5- إرسال الصورة
     await bot.sendPhoto(chatId, p, { caption: caption, parse_mode: 'Markdown' });
     if (fs.existsSync(p)) fs.unlinkSync(p);
 }
@@ -149,7 +173,7 @@ async function drawRedDot(page, x, y) {
         if (!dot) {
             dot = document.createElement('div');
             dot.id = 'bot-red-dot';
-            dot.style.cssText = 'position:fixed;width:14px;height:14px;background-color:red;border:2px solid white;border-radius:50%;z-index:9999999;pointer-events:none;box-shadow:0 0 5px #000;transform:translate(-50%, -50%);';
+            dot.style.cssText = 'position:fixed;width:16px;height:16px;background-color:red;border:3px solid white;border-radius:50%;z-index:2147483647;pointer-events:none;box-shadow:0 0 5px #000;transform:translate(-50%, -50%);';
             document.body.appendChild(dot);
         }
         dot.style.left = pos.x + 'px';
@@ -310,7 +334,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         await sleep(5000); 
 
         // ==========================================================
-        // 🌟 التعديل الخاص بصفحة العمر والاسم (Age vs Birthday) 🌟
+        // إدخال العمر والاسم (Age vs Birthday) 
         // ==========================================================
         const nameInputNode = page.getByRole("textbox", { name: "Full name" }).first();
         if (await nameInputNode.isVisible({ timeout: 15000 }).catch(() => false)) {
@@ -318,15 +342,12 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             codeGen.addCommand(`await page.getByRole("textbox", { name: "Full name" }).first().fill("Auto User");`);
             await sleep(1000);
             
-            // قراءة النص الموجود بالصفحة لمعرفة إن كان يطلب Age أو Birthday
             const bodyText = await page.innerText('body').catch(()=>'');
             const isAge = bodyText.toLowerCase().includes('how old are you') || bodyText.toLowerCase().includes('age');
             
-            // محاولة العثور على الحقل برمجياً
             const ageInput = page.locator('input[name="age"], input[id*="age" i], [aria-label*="age" i]').first();
             const bdayInput = page.locator('input[name="birthday"], [aria-label*="birthday" i]').first();
             
-            // إذا كان يطلب العمر (Age)
             if (await ageInput.isVisible({ timeout: 2000 }).catch(() => false) || isAge) {
                 if (await ageInput.isVisible().catch(() => false)) {
                     await ageInput.focus().catch(()=>{}); 
@@ -334,12 +355,11 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 } else {
                     await page.keyboard.press('Tab');
                 }
-                await page.keyboard.press('Control+A'); // تحديد أي شيء مكتوب بالخطأ
-                await page.keyboard.press('Backspace'); // مسحه
-                await page.keyboard.type("25", { delay: 150 }); // كتابة 25
+                await page.keyboard.press('Control+A'); 
+                await page.keyboard.press('Backspace'); 
+                await page.keyboard.type("25", { delay: 150 });
                 codeGen.addCommand(`await page.locator('input[name="age"]').fill("25");`);
             } 
-            // إذا كان يطلب تاريخ الميلاد بالطريقة القديمة (Birthday)
             else if (await bdayInput.isVisible({ timeout: 2000 }).catch(() => false)) {
                 await bdayInput.focus().catch(()=>{}); 
                 await bdayInput.click({ force: true }).catch(()=>{});
@@ -348,7 +368,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 await page.keyboard.type("01012000", { delay: 150 });
                 codeGen.addCommand(`await page.locator('input[name="birthday"]').fill("01012000");`);
             } 
-            // حل بديل (Fallback) يضغط Tap ويكتب 25
             else {
                 await page.keyboard.press('Tab');
                 await page.keyboard.press('Control+A');
@@ -358,7 +377,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             }
             await sleep(1000);
 
-            // الضغط على زر (Finish creating account)
             const finishBtn = page.locator('button:has-text("Finish creating account"), button:has-text("Agree"), button:has-text("Continue")').last();
             if (await finishBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
                 await finishBtn.click({ force: true });
@@ -445,7 +463,9 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  
                  codeGen.addComment("تعذر استخراج كود 32 حرف. تحويل المستخدم للوضع اليدوي والشبكة.");
                  await bot.sendMessage(chatId, "⚠️ **لم يتم العثور على الكود 32 حرف كابيتال في الصفحة، سيتم تحويلك للتحكم اليدوي.**");
-                 await drawGridAndScreenshot(page, chatId, "🔲 **صورة الشاشة مقسمة لمربعات (20x15):**\nاستخدم الأرقام والزوايا في الصورة لمعرفة المكان الذي يجب الضغط عليه لتكملة السكربت.");
+                 
+                 // رسم الشبكة تلقائياً لمساعدتك
+                 await drawGridAndScreenshot(page, chatId, `🔲 **صورة الشاشة مقسمة لمربعات (${TOTAL_CELLS} مربع):**\nاستخدم الأرقام في الصورة لمعرفة المكان الذي يجب الضغط عليه لتكملة السكربت.`);
                  await startInteractiveMode(chatId, page, context, tempDir, codeGen, currentPhotoId);
 
              } else {
@@ -509,11 +529,12 @@ bot.on('callback_query', async (query) => {
             await sendMouseMenu(chatId);
         }
         else if (action === 'show_grid') {
-            await drawGridAndScreenshot(state.page, chatId, "👁️ **المربعات الشفافة المعروضة (300 مربع):**\nالآن ارجع للقائمة واضغط إرسال رقم لتحريك الماوس.");
+            await bot.sendMessage(chatId, "⏳ جاري رسم المربعات، الرجاء الانتظار قليلاً...");
+            await drawGridAndScreenshot(state.page, chatId, `👁️ **المربعات الشفافة المعروضة (${TOTAL_CELLS} مربع):**\nالآن ارجع للقائمة واضغط إرسال رقم لتحريك الماوس.`);
             await sendMouseMenu(chatId);
         }
         else if (action === 'move_mouse') {
-            bot.sendMessage(chatId, "🧭 أرسل **رقم المربع** (من 0 إلى 299) لكي يذهب الماوس إليه:", { reply_markup: { inline_keyboard: [[{text: "🔙 رجوع", callback_data: "int_back_main"}]] } });
+            bot.sendMessage(chatId, `🧭 أرسل **رقم المربع** (من 0 إلى ${TOTAL_CELLS - 1}) لكي يذهب الماوس إليه:`, { reply_markup: { inline_keyboard: [[{text: "🔙 رجوع", callback_data: "int_back_main"}]] } });
             state.step = 'awaiting_move_mouse';
         }
         else if (action === 'click_mouse') {
@@ -623,8 +644,10 @@ bot.on('message', async (msg) => {
         if (!isNaN(num) && num >= 0 && num < TOTAL_CELLS) {
             state.step = null;
             
-            const vw = 1366 / GRID_COLS;
-            const vh = 768 / GRID_ROWS;
+            const viewportSize = state.page.viewportSize() || { width: 1366, height: 768 };
+            const vw = viewportSize.width / GRID_COLS;
+            const vh = viewportSize.height / GRID_ROWS;
+            
             const col = num % GRID_COLS;
             const row = Math.floor(num / GRID_COLS);
             
@@ -638,6 +661,10 @@ bot.on('message', async (msg) => {
             await drawRedDot(state.page, x, y);
             
             const dotImg = path.join(__dirname, `dot_${Date.now()}.png`);
+            
+            // تأخير صغير لضمان رسم النقطة الحمراء
+            await sleep(500);
+            
             await state.page.screenshot({ path: dotImg });
             
             await bot.sendPhoto(chatId, dotImg, {
@@ -677,4 +704,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت المطور (تحديث الـ Age + Playwright Generator) يعمل الآن بنجاح...");
+console.log("🤖 البوت المطور جاهز (تم إصلاح شبكة المربعات الشفافة بنجاح)...");
