@@ -322,7 +322,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 await page.keyboard.press('Tab');
                 await page.keyboard.type("25", { delay: 150 });
             }
-            const finishBtn = page.getByRole("button", { name: "Finish creating account" }).last();
+            const finishBtn = page.getByRole("button", { name: "Continue" }).last();
             if (await finishBtn.isVisible().catch(() => false)) await finishBtn.click({ force: true });
             else await page.keyboard.press('Enter');
             await sleep(8000); 
