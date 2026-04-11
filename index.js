@@ -1,4 +1,4 @@
- /*
+/*
  * ==========================================================
  * ChatGPT 2FA Automator & Playwright Script Generator
  * ==========================================================
@@ -114,67 +114,73 @@ const GRID_ROWS = 15;
 const TOTAL_CELLS = GRID_COLS * GRID_ROWS; // 300 مربع
 
 async function drawGridAndScreenshot(page, chatId, caption) {
-    console.log('drawGridAndScreenshot called');
+    console.log('\n--- 🟡 بدء رسم الشبكة الشفافة ---');
+    console.log('1. هل الدالة استُدعيت أصلًا؟ نعم.');
 
     const p = path.join(__dirname, `grid_${Date.now()}.png`);
 
-    await page.screenshot({ path: p, fullPage: false });
-
-    let createCanvas, loadImage;
     try {
-        ({ createCanvas, loadImage } = require('canvas'));
-    } catch (e) {
-        console.log('canvas module missing');
-        throw new Error('canvas module missing');
-    }
+        await page.screenshot({ path: p, fullPage: false });
 
-    const img = await loadImage(p);
-    const p = path.join(__dirname, `grid_${Date.now()}.png`);
-
-    await page.screenshot({ path: p });
-
-    const { createCanvas, loadImage } = require('canvas');
-    const img = await loadImage(p);
-    const canvas = createCanvas(img.width, img.height);
-    const ctx = canvas.getContext('2d');
-
-    ctx.drawImage(img, 0, 0);
-
-    const cellW = img.width / GRID_COLS;
-    const cellH = img.height / GRID_ROWS;
-
-    for (let row = 0; row < GRID_ROWS; row++) {
-        for (let col = 0; col < GRID_COLS; col++) {
-            const i = row * GRID_COLS + col;
-            const x = col * cellW;
-            const y = row * cellH;
-
-            ctx.fillStyle = 'rgba(0,0,0,0.12)';
-            ctx.fillRect(x, y, cellW, cellH);
-
-            ctx.strokeStyle = 'rgba(255,255,0,0.75)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x, y, cellW, cellH);
-
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 12px Sans';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-
-            const tx = x + cellW / 2;
-            const ty = y + cellH / 2;
-
-            ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-            ctx.lineWidth = 3;
-            ctx.strokeText(String(i), tx, ty);
-            ctx.fillText(String(i), tx, ty);
+        let canvasModule;
+        try {
+            canvasModule = require('canvas');
+        } catch (e) {
+            console.log('❌ مكتبة canvas غير متوفرة.');
+            await bot.sendMessage(chatId, "⚠️ يرجى تثبيت مكتبة canvas لتشغيل هذه الميزة: `npm install canvas`", { parse_mode: 'Markdown' });
+            return;
         }
+
+        const { createCanvas, loadImage } = canvasModule;
+        const img = await loadImage(p);
+        const canvas = createCanvas(img.width, img.height);
+        const ctx = canvas.getContext('2d');
+
+        ctx.drawImage(img, 0, 0);
+
+        const cellW = img.width / GRID_COLS;
+        const cellH = img.height / GRID_ROWS;
+
+        for (let row = 0; row < GRID_ROWS; row++) {
+            for (let col = 0; col < GRID_COLS; col++) {
+                const i = row * GRID_COLS + col;
+                const x = col * cellW;
+                const y = row * cellH;
+
+                ctx.fillStyle = 'rgba(0,0,0,0.18)';
+                ctx.fillRect(x, y, cellW, cellH);
+
+                ctx.strokeStyle = 'rgba(255,255,0,0.7)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x, y, cellW, cellH);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 12px Sans';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                const tx = x + cellW / 2;
+                const ty = y + cellH / 2;
+
+                ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+                ctx.lineWidth = 3;
+                ctx.strokeText(String(i), tx, ty);
+                ctx.fillText(String(i), tx, ty);
+            }
+        }
+        console.log('2. هل عنصر الشبكة تم إنشاؤه؟ نعم (تم رسم المربعات فوق الصورة برمجياً باستخدام Canvas).');
+
+        fs.writeFileSync(p, canvas.toBuffer('image/png'));
+        console.log('3. هل تم حفظ الصورة؟ نعم، تم الدمج والحفظ.');
+
+        await bot.sendPhoto(chatId, p, { caption: caption, parse_mode: 'Markdown' });
+        console.log('4. هل إرسال الصورة عبر البوت نجح أو فشل؟ نجح الإرسال بامتياز.');
+
+    } catch (error) {
+        console.error('❌ 4. هل إرسال الصورة عبر البوت نجح أو فشل؟ فشل الإرسال! السبب:', error.message);
+    } finally {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
     }
-
-    fs.writeFileSync(p, canvas.toBuffer('image/png'));
-
-    await bot.sendPhoto(chatId, p, { caption, parse_mode: 'Markdown' });
-    if (fs.existsSync(p)) fs.unlinkSync(p);
 }
 
 async function drawRedDot(page, x, y) {
