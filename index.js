@@ -6,7 +6,8 @@
  * - أداة توليد أكواد برمجية دقيقة (Playwright Code Builder).
  * - نظام تفاعلي قوي: بحث عن نصوص وضغطها برمجياً + كيبورد.
  * - نظام ماوس دقيق (300 مربع شفاف) مع نقطة حمراء 🔴 للتأكيد.
- * - رسم الشبكة تلقائياً إذا تعذر إيجاد كود الـ 32 حرف.
+ * - رسم الشبكة تلقائياً باستخدام Canvas لحل مشكلة إخفاء العناصر.
+ * - تخطي تلقائي للنوافذ الترحيبية (Skip, Skip Tour, Continue).
  * ==========================================================
  */
 
@@ -58,7 +59,7 @@ class PlaywrightCodeGenerator {
     }
 }
 
-// =================عدلت 16 الى 12/دوال مساعدة لإنشاء البريد =================
+// ================= دوال مساعدة لإنشاء البريد =================
 function generateSecurePassword() {
     const chars = "00CHAT700z00";
     let password = "";
@@ -115,7 +116,6 @@ const TOTAL_CELLS = GRID_COLS * GRID_ROWS; // 300 مربع
 
 async function drawGridAndScreenshot(page, chatId, caption) {
     console.log('\n--- 🟡 بدء رسم الشبكة الشفافة ---');
-    console.log('1. هل الدالة استُدعيت أصلًا؟ نعم.');
 
     const p = path.join(__dirname, `grid_${Date.now()}.png`);
 
@@ -127,7 +127,7 @@ async function drawGridAndScreenshot(page, chatId, caption) {
             canvasModule = require('canvas');
         } catch (e) {
             console.log('❌ مكتبة canvas غير متوفرة.');
-            await bot.sendMessage(chatId, "⚠️ يرجى تثبيت مكتبة canvas لتشغيل هذه الميزة: `npm install canvas`", { parse_mode: 'Markdown' });
+            await bot.sendMessage(chatId, "⚠️ يرجى تثبيت مكتبة canvas لتشغيل هذه الميزة.", { parse_mode: 'Markdown' });
             return;
         }
 
@@ -168,16 +168,12 @@ async function drawGridAndScreenshot(page, chatId, caption) {
                 ctx.fillText(String(i), tx, ty);
             }
         }
-        console.log('2. هل عنصر الشبكة تم إنشاؤه؟ نعم (تم رسم المربعات فوق الصورة برمجياً باستخدام Canvas).');
 
         fs.writeFileSync(p, canvas.toBuffer('image/png'));
-        console.log('3. هل تم حفظ الصورة؟ نعم، تم الدمج والحفظ.');
-
         await bot.sendPhoto(chatId, p, { caption: caption, parse_mode: 'Markdown' });
-        console.log('4. هل إرسال الصورة عبر البوت نجح أو فشل؟ نجح الإرسال بامتياز.');
 
     } catch (error) {
-        console.error('❌ 4. هل إرسال الصورة عبر البوت نجح أو فشل؟ فشل الإرسال! السبب:', error.message);
+        console.error('❌ حدث خطأ أثناء الرسم:', error.message);
     } finally {
         if (fs.existsSync(p)) fs.unlinkSync(p);
     }
@@ -370,6 +366,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
 
         await updateStatus("في انتظار الصفحة الرئيسية...");
         await page.waitForURL('**/chat', {timeout: 30000}).catch(()=>{});
+        await sleep(3000); // إعطاء الموقع فرصة لتحميل النوافذ المنبثقة
         
         if (page.url().includes('/chat')) {
              const result = `${email}|${chatGptPassword}`;
@@ -377,10 +374,26 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
 
              if (isManual) {
                  // =======================================================
-                 // قسم المصادقة الثنائية التلقائي (2FA)
+                 // قسم المصادقة الثنائية التلقائي (2FA) وتخطي الترحيب
                  // =======================================================
-                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **نجاح (يدوي):**\n\`${result}\`\n\nلن يُغلق البوت.. سيستمر للتوجه وإعداد المصادقة الثنائية تلقائياً...`, currentPhotoId);
+                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **تم الدخول بنجاح:**\n\`${result}\`\n\nيتم الآن تخطي النوافذ الترحيبية والانتقال لإعداد المصادقة...`, currentPhotoId);
                  
+                 // --- التحديث المطلوب: تخطي النوافذ الترحيبية تلقائياً ---
+                 codeGen.addComment("تخطي النوافذ الترحيبية (Skip, Skip Tour, Continue)");
+                 const skipSequence = ["Skip", "Skip", "Skip Tour", "Continue"];
+                 for (const btnText of skipSequence) {
+                     try {
+                         const btn = page.locator(`text="${btnText}"`).first();
+                         await btn.waitFor({ state: 'visible', timeout: 3000 });
+                         await btn.click({ force: true });
+                         codeGen.addCommand(`await page.locator('text="${btnText}"').first().click();`);
+                         await sleep(1000);
+                     } catch (e) {
+                         // إذا لم يظهر الزر في الوقت المحدد، نتجاهله ونكمل للذي بعده
+                     }
+                 }
+                 // ---------------------------------------------------------
+
                  codeGen.addComment("الدخول لإعدادات الأمان وتفعيل المصادقة 2FA");
                  await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
                  codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
@@ -676,4 +689,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت المطور يعمل الآن (مولد أكواد Playwright + البحث عن نصوص + تحكم دقيق بالماوس)...");
+console.log("🤖 البوت المطور يعمل الآن (دعم Canvas + تخطي النوافذ الترحيبية + 2FA)...");
