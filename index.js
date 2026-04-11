@@ -4,7 +4,7 @@
  * ==========================================================
  * - أداة توليد أكواد برمجية دقيقة (Playwright Code Builder).
  * - ترقيم تلقائي لجميع خطوات السكربت (الخطوة 1، الخطوة 2...).
- * - توليد كود ديناميكي ذكي لجلب كود 2FA من التبويب والعودة للموقع.
+ * - توليد كود ديناميكي ذكي لجلب كود 2FA (يدعم الأرقام ذات المسافات).
  * - نظام تفاعلي كامل وزر "البحث عن الرابط".
  * - نظام ماوس دقيق جداً (1125 مربع صغير) شفاف تماماً وأرقام شفافة.
  * - دالة ذكية لتخطي النوافذ الترحيبية ومنع تكرار الخطوات في السكربت.
@@ -51,7 +51,6 @@ class PlaywrightCodeGenerator {
     }
     
     addCommand(cmd) {
-        // منع تسجيل الأكواد المكررة والمتطابقة (مثل الضغط على الزر مرتين)
         if (this.lastCommand === cmd && cmd.trim() !== "") {
             this.pendingStep = null; 
             return;
@@ -110,6 +109,7 @@ async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
             const res = await axios.get(`${MAIL_API}/messages`, { headers: { Authorization: `Bearer ${token}` } });
             const messages = res.data['hydra:member'] || [];
             for (const msg of messages) {
+                // الكود القادم من الإيميل يتكون من 6 أرقام متصلة
                 const codeMatch = `${msg.subject || ''} ${msg.intro || ''}`.match(/\b\d{6}\b/);
                 if (codeMatch) return codeMatch[0];
             }
@@ -402,10 +402,9 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
              const result = `${email}|${chatGptPassword}`;
              fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
              
-             // حفظ الإيميل والباسورد للمرحلة النهائية
              userState[chatId].accountInfo = { email: email, password: chatGptPassword };
 
-             // --- تنظيف التكرار في السكربت المستخرج (تخطي النوافذ الترحيبية بشكل برمجي ذكي) ---
+             // --- تنظيف التكرار في السكربت المستخرج ---
              codeGen.addRawBlock(
                  "دالة ذكية لتخطي النوافذ الترحيبية (إن وجدت) دون تكرار الأكواد",
                  [
@@ -421,7 +420,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  ]
              );
              
-             // التنفيذ الفعلي للتخطي في المتصفح
              const skipSequence = ["Skip", "Skip Tour", "Continue", "Okay", "Done"];
              for (let i = 0; i < 2; i++) {
                  for (const btnText of skipSequence) {
@@ -436,7 +434,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
              }
 
              if (isManual) {
-                 // ================= التشغيل اليدوي =================
                  currentPhotoId = await sendStepPhoto(page, chatId, `✅ **تم إنشاء الحساب بنجاح:**\n\`${result}\`\n\nيتم الآن الانتظار 5 ثواني للتوجه إلى إعدادات الأمان...`, currentPhotoId);
 
                  codeGen.addStep("الانتظار لمدة 5 ثواني قبل التوجه لإعدادات الأمان");
@@ -454,7 +451,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  return true;
 
              } else {
-                 // ================== المسار التلقائي ==================
                  currentPhotoId = await sendStepPhoto(page, chatId, `✅ **نجاح (تلقائي):**\n\`${result}\`\n\nيتم الآن الانتقال لإعداد المصادقة...`, currentPhotoId);
                  
                  codeGen.addStep("الدخول لإعدادات الأمان وتفعيل المصادقة 2FA تلقائياً");
@@ -488,7 +484,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                      const secretCode = secretMatch[0];
                      currentPhotoId = await sendStepPhoto(page, chatId, `🔑 تم العثور على الكود السري بنجاح:\n\`${secretCode}\``, currentPhotoId);
                      
-                     // توليد كود الـ 2FA الذكي في السكربت
+                     // توليد الكود الذكي لمسح المسافات واستخراج الأرقام
                      codeGen.addRawBlock(
                         `استخراج الكود السري ونسخ 6 أرقام من 2fa.fb.tools عبر تبويب جديد والعودة`,
                         [
@@ -496,9 +492,9 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                             `await mfaPage.goto("https://2fa.fb.tools/${secretCode}", { waitUntil: "domcontentloaded" });`,
                             `await mfaPage.waitForTimeout(3000);`,
                             `const mfaText = await mfaPage.innerText('body');`,
-                            `const code6Match = mfaText.match(/\\b\\d{6}\\b/);`,
+                            `const code6Match = mfaText.match(/\\b\\d{3}\\s*\\d{3}\\b/); // يقبل الرقم حتى لو بينه مسافة`,
                             `if (code6Match) {`,
-                            `    const code6 = code6Match[0];`,
+                            `    const code6 = code6Match[0].replace(/\\s+/g, ''); // إزالة المسافات`,
                             `    await mfaPage.close();`,
                             `    await page.bringToFront();`,
                             `    const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();`,
@@ -522,10 +518,12 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                      await mfaPage.goto(`https://2fa.fb.tools/${secretCode}`).catch(()=>{});
                      await sleep(3000);
                      const mfaText = await mfaPage.innerText('body');
-                     const code6Match = mfaText.match(/\b\d{6}\b/);
+                     
+                     // التحديث هنا: البحث عن الرقم ومسح المسافة
+                     const code6Match = mfaText.match(/\b\d{3}\s*\d{3}\b/);
                      
                      if (code6Match) {
-                         const code6 = code6Match[0];
+                         const code6 = code6Match[0].replace(/\s+/g, ''); // حذف المسافة ودمج الرقم
                          await mfaPage.close();
                          await page.bringToFront();
                          
@@ -611,7 +609,6 @@ bot.on('callback_query', async (query) => {
         else if (action === 'continue_af2') {
             bot.sendMessage(chatId, "⏳ جاري استخراج كود الـ 32 حرف وإكمال إجراءات الـ AF2 في نافذة جديدة...");
             try {
-                // محاولة ذكية لإظهار الكود إذا كان مخفياً تحت "Trouble scanning"
                 let pageText = await state.page.innerText('body');
                 let secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
                 
@@ -638,9 +635,9 @@ bot.on('callback_query', async (query) => {
                             `await mfaPage.goto("https://2fa.fb.tools/${secretCode}", { waitUntil: "domcontentloaded" });`,
                             `await mfaPage.waitForTimeout(3000);`,
                             `const mfaText = await mfaPage.innerText('body');`,
-                            `const code6Match = mfaText.match(/\\b\\d{6}\\b/);`,
+                            `const code6Match = mfaText.match(/\\b\\d{3}\\s*\\d{3}\\b/); // يبحث عن الأرقام وتجاهل المسافة`,
                             `if (code6Match) {`,
-                            `    const code6 = code6Match[0];`,
+                            `    const code6 = code6Match[0].replace(/\\s+/g, ''); // مسح المسافة لدمج الرقم`,
                             `    await mfaPage.close();`,
                             `    await page.bringToFront();`,
                             `    const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();`,
@@ -666,10 +663,11 @@ bot.on('callback_query', async (query) => {
                     await sleep(3000);
                     
                     const mfaText = await mfaPage.innerText('body');
-                    const code6Match = mfaText.match(/\b\d{6}\b/);
+                    // التحديث هنا أيضاً للوضع التفاعلي
+                    const code6Match = mfaText.match(/\b\d{3}\s*\d{3}\b/);
                     
                     if (code6Match) {
-                        const code6 = code6Match[0];
+                        const code6 = code6Match[0].replace(/\s+/g, ''); // مسح المسافة
                         await mfaPage.close();
                         await state.page.bringToFront();
                         
@@ -922,4 +920,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت المطور يعمل الآن (دالة 2FA ديناميكية للتبويبات + تنظيف التكرار + 1125 مربع)...");
+console.log("🤖 البوت المطور يعمل الآن (دعم مسافات الكود 2FA + تنظيف التكرار + 1125 مربع)...");
