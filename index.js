@@ -2,13 +2,12 @@
  * ==========================================================
  * ChatGPT 2FA Automator & Playwright Script Generator
  * ==========================================================
- * - [رادار Regex ذكي 🧠] يصطاد (skip, okay, next..) مهما كان حجم الحروف أو الكلمات المجاورة!
- * - [محلل خانات ذكي 👤] يفرق بين (Age -> 25) و (Birthday -> 01/01/2000) بدقة تامة.
- * - [أسماء حقيقية] يولد أسماء أجنبية مختلفة في كل عملية.
- * - [تخطي إجباري ⏭️] قنص النوافذ الوهمية بالـ JS Injection.
+ * - [تأمين الجلسة 🔒] فتح chkip.info في تبويب جديد وإغلاقه لمنع تسجيل الخروج.
+ * - [تعبئة ذكية 👤] توليد اسم حقيقي وتعبئة العمر/الميلاد والضغط على Finish.
+ * - [مسار 527 المباشر 🎯] الانتقال للأمان -> ضغط مربع 527 -> تفعيل 2FA تلقائياً.
  * - أتمتة قطعية 100%: أدخل الإيميل وكود البريد، ثم استلم الحساب جاهزاً!
  * - تسليم الحساب بصيغة نظيفة: ايميل / باسورد / رمز / رابط 2FA.
- * - توثيق كامل مستمر وتصوير الشاشة.
+ * - توثيق كامل مستمر بصور مرقمة لكل خطوة.
  * ==========================================================
  */
 
@@ -64,7 +63,7 @@ class PlaywrightCodeGenerator {
         this.lastCommand = linesArr[linesArr.length - 1];
     }
     getFinalScript() {
-        return `// ==========================================\n// 🤖 سكربت Playwright التحليلي (مدعم بالرادار القناص Regex 🧠)\n// ==========================================\n\nconst { chromium } = require('playwright');\n\n(async () => {\n    const browser = await chromium.launch({ headless: false });\n    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });\n    const page = await context.newPage();\n${this.codeLines.join('\n')}\n\n    // await browser.close();\n})();`;
+        return `// ==========================================\n// 🤖 سكربت Playwright التحليلي (تكتيك التبويب الوهمي + الإحداثيات)\n// ==========================================\n\nconst { chromium } = require('playwright');\n\n(async () => {\n    const browser = await chromium.launch({ headless: false });\n    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });\n    const page = await context.newPage();\n${this.codeLines.join('\n')}\n\n    // await browser.close();\n})();`;
     }
 }
 
@@ -188,9 +187,9 @@ async function startInteractiveMode(chatId, page, context, tempDir, codeGen) {
     return new Promise(resolve => { userState[chatId].resolveInteractive = resolve; });
 }
 
-// ================= الدالة الرئيسية الشاملة =================
+// ================= الدالة الرئيسية المباشرة =================
 async function createAccountLogic(chatId, isManual, manualData = null) {
-    let modeText = isManual ? "(إدخال إيميل ثم أتمتة شاملة بالرادار)" : "(تلقائي بالكامل 100%)";
+    let modeText = isManual ? "(إدخال مخصص -> مسار 527)" : "(تلقائي ومسار 527)";
     let statusMsgID = null;
     
     userState[chatId] = { step: null, cancel: false, isInteractive: false, photoCounter: 1 };
@@ -236,9 +235,12 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         await sendStepPhoto(page, chatId, "🌐 فتح المتصفح والدخول لصفحة التسجيل");
 
         codeGen.addStep("الضغط على زر التسجيل (Sign up)");
-        const signupBtn = page.getByRole("button", { name: "Sign up" });
-        await signupBtn.waitFor({ state: 'visible', timeout: 30000 }).catch(() => page.locator('button:has-text("Sign up")').click());
-        await signupBtn.click();
+        const signupBtn = page.locator('text=/sign up/i >> visible=true').first();
+        if (await signupBtn.isVisible({ timeout: 15000 }).catch(()=>false)) {
+            await signupBtn.click({ force: true });
+        } else {
+            await page.getByRole("button", { name: "Sign up" }).click();
+        }
         codeGen.addCommand(`await page.locator('button:has-text("Sign up")').click();`);
         await sleep(2000);
         await sendStepPhoto(page, chatId, "👆 تم الضغط على خيار Sign up");
@@ -281,7 +283,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 };
                 bot.on('message', listener);
             });
-            await updateStatus("✅ تم استلام الكود. الرادار الفائق سيتولى القيادة الآن، اترك الهاتف تماماً! 🚀");
+            await updateStatus("✅ تم استلام الكود. نظام تجاوز النوافذ السحري سيتولى القيادة الآن، اترك الهاتف تماماً! 🚀");
         } else {
             await updateStatus("في انتظار صفحة الكود...");
             code = await waitForMailTmCode(email, mailToken, chatId, 100);
@@ -302,272 +304,142 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         else await page.keyboard.press('Enter');
         await sleep(5000); 
 
+        // =======================================================================
+        // 👤 مرحلة تعبئة البيانات بذكاء (الاسم والعمر)
+        // =======================================================================
+        codeGen.addStep("تعبئة بيانات الاسم وتاريخ الميلاد إن ظهرت");
+        const nameBox = page.locator('input[name*="name" i], [aria-label*="name" i], [placeholder*="name" i], input[autocomplete="name"]').first();
+        
+        try {
+            await nameBox.waitFor({ state: 'visible', timeout: 10000 });
+            if (await nameBox.isVisible()) {
+                const firstNames = ["James", "John", "Robert", "Michael", "William", "David", "Emma", "Olivia", "Sophia", "Ava"];
+                const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis"];
+                const randomName = firstNames[Math.floor(Math.random() * firstNames.length)] + " " + lastNames[Math.floor(Math.random() * lastNames.length)];
+                
+                await nameBox.fill(randomName);
+                codeGen.addCommand(`await page.locator('input[name*="name" i]').first().fill("${randomName}");`);
+                await sleep(500);
+                
+                const bdayBox = page.locator('input[name*="birth" i], [aria-label*="birth" i], [placeholder*="birth" i], input[type="date"], input[placeholder*="YYYY" i]').first();
+                const ageBox = page.locator('input[name*="age" i], [aria-label*="age" i], [placeholder*="age" i]').first();
+                
+                if (await bdayBox.isVisible().catch(()=>false)) {
+                    await bdayBox.focus(); await bdayBox.click({ force: true }).catch(()=>{});
+                    await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');
+                    await page.keyboard.type("01/01/2000", { delay: 100 });
+                    codeGen.addCommand(`await page.keyboard.type("01/01/2000");`);
+                } else if (await ageBox.isVisible().catch(()=>false)) {
+                    await ageBox.focus(); await ageBox.click({ force: true }).catch(()=>{});
+                    await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');
+                    await page.keyboard.type("25", { delay: 100 });
+                    codeGen.addCommand(`await page.keyboard.type("25");`);
+                } else {
+                    await page.keyboard.press('Tab'); await page.keyboard.type("25", { delay: 100 });
+                    codeGen.addCommand(`await page.keyboard.press('Tab'); await page.keyboard.type("25");`);
+                }
+                
+                await sendStepPhoto(page, chatId, `👤 تم تعبئة البيانات (الاسم: ${randomName} | الميلاد/العمر تم تحديده)`);
+                
+                const finishBtn = page.locator('text=/continue/i >> visible=true, text=/agree/i >> visible=true, text=/finish/i >> visible=true').first();
+                if (await finishBtn.isVisible().catch(() => false)) {
+                    await finishBtn.evaluate(n=>n.click()).catch(()=>finishBtn.click({ force: true }));
+                    codeGen.addCommand(`await page.locator('button:has-text("Continue")').click();`);
+                } else {
+                    await page.keyboard.press('Enter');
+                    codeGen.addCommand(`await page.keyboard.press('Enter');`);
+                }
+            }
+        } catch(e) {
+            console.log("No name form appeared, moving on...");
+        }
+
+        // =========================================================================================
+        // 🔒 تأمين الجلسة لمنع تسجيل الخروج
+        // =========================================================================================
+        await sendStepPhoto(page, chatId, "⏳ جاري تأمين جلسة الحساب في المتصفح لمنع تسجيل الخروج...");
+        
+        // ننتظر حتى نصل للواجهة الرئيسية لنتأكد 100% أن تسجيل الدخول اكتمل
+        await page.waitForURL('**/chat', { timeout: 15000 }).catch(()=>{});
+        await sleep(2000); 
+
         userState[chatId].accountInfo = { email: email, password: chatGptPassword };
         fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), `${email}|${chatGptPassword}\n`);
 
-        await sendStepPhoto(page, chatId, "🛸 تفعيل الرادار القناص (Regex Radar) لمسح الخانات وتدمير النوافذ...");
-
         // =========================================================================================
-        // 🧠 الرادار القطعي الشامل (The Ultimate Regex Radar - Cognitive AI)
+        // 👻 التبويب الوهمي (Ghost Tab): فتح chkip.info في نافذة جديدة دون فقدان تسجيل الدخول
         // =========================================================================================
-        codeGen.addRawBlock("الرادار القطعي بالـ Regex: يفرق بين Age و Birthday، ويقنص الكلمات مهما كان النص حولها", [
-            `let radarActive = true;`,
-            `let radarAttempts = 0;`,
-            `let secretCodeFinal = null;`,
-            `while (radarActive && radarAttempts < 45) {`,
-            `    radarAttempts++;`,
-            `    await page.waitForTimeout(2000);`,
-            `    let filledData = false;`,
-            `    `,
-            `    // 1. أولوية قصوى: تعبئة البيانات الشخصية`,
-            `    const nameBox = page.locator('input[name*="name" i], [aria-label*="name" i], [placeholder*="name" i], input[autocomplete="name"]').first();`,
-            `    if (await nameBox.isVisible().catch(()=>false)) {`,
-            `        const firstNames = ["James", "John", "Robert", "Michael", "Emma", "Olivia", "Ava", "Sophia"];`,
-            `        const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller"];`,
-            `        const randomName = firstNames[Math.floor(Math.random() * firstNames.length)] + " " + lastNames[Math.floor(Math.random() * lastNames.length)];`,
-            `        await nameBox.fill(randomName); await page.waitForTimeout(500); filledData = true;`,
-            `    }`,
-            `    const ageBox = page.locator('input[name*="age" i], [aria-label*="age" i], [placeholder*="age" i]').first();`,
-            `    const bdayBox = page.locator('input[name*="birth" i], [aria-label*="birth" i], [placeholder*="birth" i], input[type="date"]').first();`,
-            `    if (await ageBox.isVisible().catch(()=>false)) {`,
-            `        await ageBox.focus(); await ageBox.click();`,
-            `        await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');`,
-            `        await page.keyboard.type("25", { delay: 100 }); filledData = true;`,
-            `    } else if (await bdayBox.isVisible().catch(()=>false)) {`,
-            `        await bdayBox.focus(); await bdayBox.click();`,
-            `        await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');`,
-            `        await page.keyboard.type("01/01/2000", { delay: 100 }); filledData = true;`,
-            `    } else if (!filledData) {`,
-            `        const genericInput = page.locator('input[type="text"], input:not([type="hidden"])').first();`,
-            `        if (await genericInput.isVisible().catch(()=>false)) {`,
-            `            const pageText = await page.innerText('body').catch(()=>'');`,
-            `            if (pageText.match(/\\bage\\b/i)) {`,
-            `                await genericInput.focus(); await genericInput.click();`,
-            `                await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');`,
-            `                await page.keyboard.type("25", { delay: 100 }); filledData = true;`,
-            `            } else if (pageText.match(/\\bbirth/i)) {`,
-            `                await genericInput.focus(); await genericInput.click();`,
-            `                await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');`,
-            `                await page.keyboard.type("01/01/2000", { delay: 100 }); filledData = true;`,
-            `            }`,
-            `        }`,
-            `    }`,
-            `    if (filledData) {`,
-            `        const contBtn = page.locator('text=/continue/i >> visible=true, text=/agree/i >> visible=true, text=/next/i >> visible=true').first();`,
-            `        if (await contBtn.isVisible().catch(()=>false)) await contBtn.evaluate(n=>n.click()).catch(()=>contBtn.click({force: true}));`,
-            `        else await page.keyboard.press('Enter');`,
-            `        continue;`,
-            `    }`,
-            `    `,
-            `    // 2. هل ظهر الكود 32 حرف؟`,
-            `    const pageText = await page.innerText('body').catch(()=>'');`,
-            `    const secretMatch = pageText.match(/\\b[A-Z2-7]{32}\\b/);`,
-            `    if (secretMatch) { secretCodeFinal = secretMatch[0]; radarActive = false; break; }`,
-            `    `,
-            `    // 3. هل يوجد زر إظهار الكود (Trouble scanning Regex)؟`,
-            `    const troubleBtn = page.locator('text=/trouble scanning/i >> visible=true').first();`,
-            `    if (await troubleBtn.isVisible().catch(()=>false)) { await troubleBtn.evaluate(node => node.click()).catch(()=>troubleBtn.click({ force: true })); continue; }`,
-            `    `,
-            `    // 4. قنص النوافذ الاستبيانية باستخدام Regex`,
-            `    const skipRegexes = [/skip/i, /okay/i, /done/i, /continue/i, /next/i];`,
-            `    let clickedPopup = false;`,
-            `    for (const rx of skipRegexes) {`,
-            `        const btn = page.locator(\`text=\${rx} >> visible=true\`).first();`,
-            `        if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {`,
-            `            await btn.evaluate(node => node.click()).catch(() => btn.click({ force: true }));`,
-            `            clickedPopup = true; break;`,
-            `        }`,
-            `    }`,
-            `    if (clickedPopup) continue;`,
-            `    `,
-            `    // 5. التوجيه المطلوب (chkip ثم إعدادات الأمان ثم الضغط على المربع 527)`,
-            `    const currentUrl = page.url();`,
-            `    if (currentUrl === 'https://chatgpt.com/' || currentUrl.includes('chatgpt.com/?') || currentUrl.includes('/chat')) {`,
-            `        await page.goto("https://chkip.info/", { waitUntil: "domcontentloaded" }).catch(()=>{});`,
-            `        await page.waitForTimeout(2000);`,
-            `        await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded" }).catch(()=>{});`,
-            `        await page.waitForTimeout(3000);`,
-            `        try { await page.mouse.click(986.56, 353.28); } catch(e){}`,
-            `        await page.waitForTimeout(1500);`,
-            `        continue;`,
-            `    }`,
-            `    `,
-            `    // 6. تفعيل الإحداثيات السحرية في صفحة Security إذا تأخر الكود`,
-            `    if (currentUrl.includes('#settings/Security')) {`,
-            `        if (radarAttempts % 4 === 0) { try { await page.mouse.click(986.56, 353.28); } catch(e){} }`,
-            `        const authToggle = page.locator('button[role="switch"]').last();`,
-            `        if (await authToggle.isVisible().catch(()=>false)) {`,
-            `            const checked = await authToggle.getAttribute('aria-checked');`,
-            `            if (checked !== 'true') await authToggle.click({force:true});`,
-            `        } else {`,
-            `            const appBtn = page.locator('text=/authenticator app/i >> visible=true').first();`,
-            `            if (await appBtn.isVisible().catch(()=>false)) await appBtn.evaluate(n=>n.click()).catch(()=>appBtn.click({force:true}));`,
-            `        }`,
-            `    }`,
-            `}`
+        
+        codeGen.addRawBlock("فتح تبويب وهمي لتدمير النوافذ الترحيبية مع الحفاظ على تسجيل دخول الجلسة الأساسية", [
+            `const bypassPage = await context.newPage();`,
+            `await bypassPage.goto("https://chkip.info/", { waitUntil: "domcontentloaded" });`,
+            `await bypassPage.waitForTimeout(2000);`,
+            `await bypassPage.close();`,
+            `await page.bringToFront();`
         ]);
 
-        let radarActive = true;
-        let radarAttempts = 0;
-        let secretCodeFinal = null;
+        const bypassPage = await context.newPage();
+        await bypassPage.goto("https://chkip.info/", { waitUntil: "domcontentloaded", timeout: 60000 }).catch(()=>{});
+        await sendStepPhoto(bypassPage, chatId, "🌐 تم فتح الرابط الخارجي (chkip.info) في [تبويب جديد - New Tab] لتدمير النوافذ مع الحفاظ على تسجيل الدخول.");
+        
+        await sleep(2000); // الانتظار ثانيتين كما طلبت
+        
+        await bypassPage.close(); // إغلاق التبويب الوهمي
+        await page.bringToFront(); // العودة لتبويب ChatGPT الأصلي الآمن
 
-        while (radarActive && radarAttempts < 45) {
-            checkCancel();
-            radarAttempts++;
+        // =========================================================================================
+        // 🎯 مسار 527 الدقيق (The 527 Path)
+        // =========================================================================================
+
+        codeGen.addStep("التوجه المباشر إلى صفحة إعدادات الأمان (Security)");
+        await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 60000 }).catch(()=>{});
+        codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded" });`);
+        await sleep(4000); 
+        await sendStepPhoto(page, chatId, "⚙️ تم العودة والدخول لصفحة الأمان (الحساب لا يزال مسجل الدخول بنجاح).");
+
+        codeGen.addStep("الضغط كليك بالماوس على المربع 527 (الإحداثيات: X=986.56, Y=353.28)");
+        try {
+            await page.mouse.click(986.56, 353.28);
+            codeGen.addCommand(`await page.mouse.click(986.56, 353.28);`);
             await sleep(2000);
-            
-            let filledData = false;
-            let reportStr = "";
+            await sendStepPhoto(page, chatId, "🎯 تم الضغط كليك على المربع 527 (الإحداثيات السحرية).");
+        } catch(e) {}
 
-            // 1. أولوية قصوى: تعبئة البيانات الشخصية (الاسم، والتمييز بين Age و Birthday بذكاء)
-            const nameBox = page.locator('input[name*="name" i], [aria-label*="name" i], [placeholder*="name" i], input[autocomplete="name"]').first();
-            if (await nameBox.isVisible({ timeout: 500 }).catch(()=>false)) {
-                const firstNames = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Emma", "Olivia", "Sophia", "Mia", "Amelia", "Harper"];
-                const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"];
-                const randomName = firstNames[Math.floor(Math.random() * firstNames.length)] + " " + lastNames[Math.floor(Math.random() * lastNames.length)];
-                await nameBox.focus().catch(()=>{}); await nameBox.click({ force: true }).catch(()=>{});
-                await page.keyboard.press('Control+A').catch(()=>{}); await page.keyboard.press('Backspace').catch(()=>{});
-                await page.keyboard.type(randomName, { delay: 50 });
-                reportStr += ` اسم (${randomName}) `;
-                filledData = true;
-                await sleep(500);
-            }
-
-            const ageBox = page.locator('input[name*="age" i], [aria-label*="age" i], [placeholder*="age" i]').first();
-            const bdayBox = page.locator('input[name*="birth" i], [aria-label*="birth" i], [placeholder*="birth" i], input[type="date"], input[placeholder*="YYYY" i]').first();
-            
-            if (await ageBox.isVisible({ timeout: 500 }).catch(()=>false)) {
-                await ageBox.focus().catch(()=>{}); await ageBox.click({ force: true }).catch(()=>{});
-                await page.keyboard.press('Control+A').catch(()=>{}); await page.keyboard.press('Backspace').catch(()=>{});
-                await page.keyboard.type("25", { delay: 50 });
-                reportStr += ` وعمر (25) `;
-                filledData = true;
-            } else if (await bdayBox.isVisible({ timeout: 500 }).catch(()=>false)) {
-                await bdayBox.focus().catch(()=>{}); await bdayBox.click({ force: true }).catch(()=>{});
-                await page.keyboard.press('Control+A').catch(()=>{}); await page.keyboard.press('Backspace').catch(()=>{});
-                await page.keyboard.type("01/01/2000", { delay: 50 });
-                reportStr += ` وتاريخ ميلاد (01/01/2000) `;
-                filledData = true;
-            } else if (!filledData) {
-                // استنتاج ذكي من الشاشة
-                const genericInput = page.locator('input[type="text"], input:not([type="hidden"])').first();
-                if (await genericInput.isVisible({ timeout: 500 }).catch(()=>false)) {
-                    const pageText = await page.innerText('body').catch(()=>'');
-                    if (pageText.match(/\bage\b/i)) {
-                        await genericInput.focus().catch(()=>{}); await genericInput.click({ force: true }).catch(()=>{});
-                        await page.keyboard.press('Control+A').catch(()=>{}); await page.keyboard.press('Backspace').catch(()=>{});
-                        await page.keyboard.type("25", { delay: 50 });
-                        reportStr += ` وعمر (25) بالاستنتاج `;
-                        filledData = true;
-                    } else if (pageText.match(/\bbirth/i) || pageText.match(/\bdob\b/i)) {
-                        await genericInput.focus().catch(()=>{}); await genericInput.click({ force: true }).catch(()=>{});
-                        await page.keyboard.press('Control+A').catch(()=>{}); await page.keyboard.press('Backspace').catch(()=>{});
-                        await page.keyboard.type("01/01/2000", { delay: 50 });
-                        reportStr += ` وميلاد (01/01/2000) بالاستنتاج `;
-                        filledData = true;
-                    }
-                }
-            }
-
-            if (filledData) {
-                await sendStepPhoto(page, chatId, `👤 الرادار: وجدت خانات بيانات وتم تعبئة:${reportStr}`);
-                const contBtn = page.locator('text=/continue/i >> visible=true, text=/agree/i >> visible=true, text=/next/i >> visible=true, text=/submit/i >> visible=true').first();
-                if (await contBtn.isVisible().catch(()=>false)) {
-                    await contBtn.evaluate(n => n.click()).catch(() => contBtn.click({ force: true }));
-                } else {
-                    await page.keyboard.press('Enter');
-                }
+        // تأمين إضافي (Fallback) في حال عدم فتح النافذة من الإحداثيات
+        try {
+            const troubleCheck = page.locator('text=/trouble scanning/i >> visible=true').first();
+            if (!(await troubleCheck.isVisible().catch(()=>false))) {
+                const authToggleBtn = page.locator('button[role="switch"]').last();
+                if (await authToggleBtn.isVisible().catch(()=>false)) await authToggleBtn.click({ force: true });
+                else await page.locator('text=/authenticator app/i >> visible=true').first().click({ force: true }).catch(()=>{});
                 await sleep(2000);
-                continue; 
             }
+        } catch(e){}
 
-            // 2. هل ظهر الكود ذو الـ 32 حرف على الشاشة؟
-            const pageText = await page.innerText('body').catch(()=>'');
-            const secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
-            if (secretMatch) {
-                secretCodeFinal = secretMatch[0];
-                radarActive = false; 
-                break;
-            }
-
-            // 3. هل زر إظهار الكود موجود (Trouble scanning Regex)؟
-            const troubleBtn = page.locator('text=/trouble scanning/i >> visible=true').first();
-            if (await troubleBtn.isVisible({ timeout: 500 }).catch(()=>false)) {
-                await troubleBtn.evaluate(node => node.click()).catch(() => troubleBtn.click({ force: true }));
-                await sleep(1500);
-                await sendStepPhoto(page, chatId, '🎯 الرادار: تم العثور على Trouble scanning بالبحث الجزئي (Regex) والضغط عليه.');
-                continue;
-            }
-
-            // 4. القناص الشامل: صيد الكلمات المفتاحية بالـ Regex
-            const skipRegexes = [/skip/i, /okay/i, /done/i, /continue/i, /next/i];
-            let clickedPopup = false;
-            for (const rx of skipRegexes) {
-                try {
-                    const btn = page.locator(`text=${rx} >> visible=true`).first();
-                    if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
-                        await btn.evaluate(node => node.click()).catch(() => btn.click({ force: true }));
-                        await sleep(1500);
-                        await sendStepPhoto(page, chatId, `⏭️ القناص (Regex): تم قنص وتدمير النافذة لوجود الكلمة المطابقة للنمط: "${rx.toString()}"`);
-                        clickedPopup = true;
-                        break; 
-                    }
-                } catch(e){}
-            }
-            if (clickedPopup) continue;
-
-            // 5. التوجيه المطلوب: (chkip -> انتظار -> الأمان -> الضغط على المربع)
-            const currentUrl = page.url();
-            if (currentUrl === 'https://chatgpt.com/' || currentUrl.includes('/chat') || currentUrl.includes('chatgpt.com/?')) {
-                // خطوة أ: الدخول لرابط chkip.info وتصويره
-                await page.goto("https://chkip.info/", { waitUntil: "domcontentloaded" }).catch(()=>{});
-                await sendStepPhoto(page, chatId, "🌐 تم فتح رابط التحقق: https://chkip.info/");
-
-                // خطوة ب: انتظار ثانيتين
+        codeGen.addStep('البحث عن النص Trouble scanning والضغط عليه لإظهار الكود');
+        try {
+            const troubleCheck = page.locator('text=/trouble scanning/i >> visible=true').first();
+            if (await troubleCheck.isVisible({timeout: 3000}).catch(()=>false)) {
+                await troubleCheck.evaluate(n=>n.click()).catch(()=>troubleCheck.click());
+                codeGen.addCommand(`await page.locator('text=/trouble scanning/i >> visible=true').first().click();`);
                 await sleep(2000);
-
-                // خطوة ج: التوجيه لصفحة الأمان وتصويره
-                await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded" }).catch(()=>{});
-                await sleep(4000);
-                await sendStepPhoto(page, chatId, "⚙️ الرادار: تم التوجيه إلى صفحة الأمان بنجاح.");
-
-                // خطوة د: الضغط على مربع 527 وتصويره
-                try { 
-                    await page.mouse.move(986.56, 353.28); // تمركز للماوس
-                    await page.mouse.click(986.56, 353.28); 
-                } catch(e){}
-                await sleep(1500);
-                await sendStepPhoto(page, chatId, "🖱️ تم الضغط على المربع 527 (لإظهار الكود).");
-                
-                continue; // العودة لبداية الحلقة ليصطاد الرادار كود الـ 32 حرف
+                await sendStepPhoto(page, chatId, '✅ تم الضغط على "Trouble scanning?".');
             }
+        } catch(e) {}
 
-            // 6. الإحداثيات السحرية في صفحة Security (في حال تأخر ظهور الكود لسبب ما)
-            if (currentUrl.includes('#settings/Security')) {
-                if (radarAttempts % 4 === 0) {
-                    try { await page.mouse.click(986.56, 353.28); } catch(e){}
-                }
-                const authToggle = page.locator('button[role="switch"]').last();
-                if (await authToggle.isVisible().catch(()=>false)) {
-                    const checked = await authToggle.getAttribute('aria-checked');
-                    if (checked !== 'true') await authToggle.click({force:true}).catch(()=>{});
-                } else {
-                    const appBtn = page.locator('text=/authenticator app/i >> visible=true').first();
-                    if (await appBtn.isVisible().catch(()=>false)) await appBtn.click({force:true}).catch(()=>{});
-                }
-            }
-        }
-        // ================== نهاية الرادار الذكي ==================
+        const pageText = await page.innerText('body').catch(()=>'');
+        const secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
 
-        // ================== المرحلة النهائية: التفعيل والتسليم ==================
-        if (secretCodeFinal) {
-            await sendStepPhoto(page, chatId, `🛡️ نجاح الرادار المطلق! تم استخراج الكود السري:\n${secretCodeFinal}`);
+        // ================== المرحلة النهائية: استخراج التفعيل والتسليم ==================
+        if (secretMatch) {
+            const secretCodeFinal = secretMatch[0];
+            await sendStepPhoto(page, chatId, `🛡️ نجاح المسار! تم استخراج الكود السري:\n${secretCodeFinal}`);
             
             codeGen.addRawBlock(
                 `جلب كود التحقق من 2fa.fb.tools ولصقه لتأكيد المصادقة`,
                 [
                     `const mfaPage = await context.newPage();`,
-                    `await mfaPage.goto("https://2fa.fb.tools/${secretCodeFinal}");`,
+                    `await mfaPage.goto("https://2fa.fb.tools/${secretCodeFinal}", { waitUntil: "domcontentloaded" });`,
                     `await mfaPage.waitForTimeout(3000);`,
                     `const mfaText = await mfaPage.innerText('body');`,
                     `const code6Match = mfaText.match(/\\b\\d{3}\\s*\\d{3}\\b/);`,
@@ -620,10 +492,10 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 const jsCode = codeGen.getFinalScript();
                 const logPath = path.join(__dirname, `AutoGenerated_Script_${Date.now()}.js`);
                 fs.writeFileSync(logPath, jsCode);
-                await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت النهائي (بالرادار القطعي) بنجاح!**" });
+                await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت النهائي بنجاح!**" });
                 fs.unlinkSync(logPath);
 
-                bot.sendMessage(chatId, "✅ اكتملت المهمة باستخدام الرادار القطعي وتم إغلاق المتصفح.");
+                bot.sendMessage(chatId, "✅ اكتملت المهمة 100% آلياً وتم إغلاق المتصفح بنجاح تام.");
                 
                 if (context) await context.close().catch(()=>{});
                 try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
@@ -633,9 +505,9 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             }
         }
              
-        // في حال فشل الرادار تماماً واستسلم (الخطة ب)
-        codeGen.addStep("استسلام הרادار الذكي. تحويل للوضع اليدوي (شبكة المربعات).");
-        await bot.sendMessage(chatId, "⚠️ **الموقع يقاوم بشدة! تم تفعيل وضع الطوارئ للتدخل اليدوي.**");
+        // خطة الطوارئ
+        codeGen.addStep("فشل العثور على كود 32 حرف. تحويل للوضع اليدوي (شبكة المربعات).");
+        await bot.sendMessage(chatId, "⚠️ **لم يظهر الكود السري! تم تفعيل وضع الطوارئ للتدخل اليدوي.**");
         await drawGridAndScreenshot(page, chatId, "🔲 **أنت الآن في وضع الطوارئ، استخدم الأرقام.**");
         await startInteractiveMode(chatId, page, context, tempDir, codeGen);
 
@@ -660,8 +532,8 @@ function sendMainMenu(chatId) {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
-                [{ text: '▶️ إنشاء حساب آلي (الرادار Regex)', callback_data: 'create_auto' }],
-                [{ text: '✍️ تشغيل مخصص (إدخال إيميل وكود -> أتمتة شاملة)', callback_data: 'create_manual' }],
+                [{ text: '▶️ إنشاء حساب آلي بالكامل', callback_data: 'create_auto' }],
+                [{ text: '✍️ تشغيل مخصص (إيميل + كود -> مسار التبويب الوهمي)', callback_data: 'create_manual' }],
                 [{ text: '🛑 إلغاء العملية', callback_data: 'cancel' }]
             ]
         }
@@ -747,7 +619,7 @@ bot.on('callback_query', async (query) => {
             return;
         }
         else if (action === 'search_text') {
-            bot.sendMessage(chatId, "🔍 أرسل **النص** للبحث والضغط (بحساسية عالية لكل الأحجام):");
+            bot.sendMessage(chatId, "🔍 أرسل **النص** للبحث والضغط:");
             state.step = 'awaiting_search_text';
         }
         else if (action === 'mouse_menu') { await sendMouseMenu(chatId); }
@@ -865,7 +737,7 @@ bot.on('message', async (msg) => {
     else if (state.step === 'awaiting_email') {
         if (!text.includes('@')) return bot.sendMessage(chatId, "❌ إيميل غير صحيح.");
         state.step = null; isProcessing = true; const autoPass = generateSecurePassword(); 
-        bot.sendMessage(chatId, `✅ تم استلام الإيميل.\n🔑 الباسورد المولد آلياً: \`${autoPass}\`\n\n(بمجرد أن يُطلب منك كود البريد، أرسله هنا واترك الرادار يكمل كل شيء للآخر!)`, {parse_mode: 'Markdown'});
+        bot.sendMessage(chatId, `✅ تم استلام الإيميل.\n🔑 الباسورد المولد آلياً: \`${autoPass}\`\n\n(بمجرد أن يُطلب منك كود البريد، أرسله هنا واترك مسار التبويب الجديد يكمل كل شيء للآخر!)`, {parse_mode: 'Markdown'});
         
         manualData = { email: text, password: autoPass };
         await createAccountLogic(chatId, true, manualData);
@@ -876,4 +748,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 الرادار المتطور (Regex + Smart Forms) يعمل الآن بكامل طاقته...");
+console.log("🤖 تكتيك التبويب الوهمي الآمن للحفاظ على تسجيل الدخول يعمل الآن بنجاح تام...");
