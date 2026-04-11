@@ -5,7 +5,7 @@
  * - تم حذف أي علاقة بالفيزا. الهدف (إنشاء + ربط 2FA) فقط.
  * - أداة توليد أكواد برمجية دقيقة (Playwright Code Builder).
  * - نظام تفاعلي قوي: بحث عن نصوص وضغطها برمجياً + كيبورد.
- * - نظام ماوس دقيق (600 مربع شفاف بالكامل) لمشاهدة الموقع من خلفها.
+ * - نظام ماوس دقيق جداً (1125 مربع صغير) شفاف تماماً وأرقام شفافة.
  * - تخطي تلقائي للنوافذ الترحيبية (Skip, Skip Tour, Continue).
  * - توقف متعمد لمدة 5 ثواني ثم الذهاب لإعدادات الأمان في الوضع اليدوي.
  * - إضافة زر "المتابعة الى AF2" لإكمال الربط تلقائياً واستخراج الكود.
@@ -111,12 +111,12 @@ async function sendStepPhoto(page, chatId, caption, previousPhotoId = null) {
 }
 
 // ================= أنظمة المربعات الشفافة الدقيقة =================
-const GRID_COLS = 30; // تصغير المربعات لـ 30 عمود
-const GRID_ROWS = 20; // 20 صف (المجموع 600 مربع)
+const GRID_COLS = 45; // تصغير المربعات بزيادة الأعمدة لـ 45
+const GRID_ROWS = 25; // 25 صف (المجموع أصبح 1125 مربع)
 const TOTAL_CELLS = GRID_COLS * GRID_ROWS; 
 
 async function drawGridAndScreenshot(page, chatId, caption) {
-    console.log('\n--- 🟡 بدء رسم الشبكة الشفافة المصغرة ---');
+    console.log('\n--- 🟡 بدء رسم الشبكة الشفافة المصغرة جداً (1125 مربع) ---');
 
     const p = path.join(__dirname, `grid_${Date.now()}.png`);
 
@@ -148,27 +148,27 @@ async function drawGridAndScreenshot(page, chatId, caption) {
                 const x = col * cellW;
                 const y = row * cellH;
 
-                // شفافية كاملة (0.0) للمربعات لقراءة ما خلفها بسهولة تامة
+                // شفافية كاملة (0.0) للمربعات لقراءة الموقع من خلفها
                 ctx.fillStyle = 'rgba(0,0,0,0.0)';
                 ctx.fillRect(x, y, cellW, cellH);
 
-                // إطار شفاف خفيف للمربع
-                ctx.strokeStyle = 'rgba(255,255,0,0.4)';
+                // إطار المربع أصفر شفاف بنسبة 30% فقط
+                ctx.strokeStyle = 'rgba(255,255,0,0.3)';
                 ctx.lineWidth = 1;
                 ctx.strokeRect(x, y, cellW, cellH);
 
-                // إعدادات الخط 
-                ctx.fillStyle = '#ffffff'; // لون الرقم أبيض
-                ctx.font = 'bold 11px Sans';
+                // إعدادات الخط (أرقام شفافة)
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; // أبيض شفاف بنسبة 70%
+                ctx.font = 'bold 9px Sans'; // تصغير الخط ليناسب دقة المربعات
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
 
                 const tx = x + cellW / 2;
                 const ty = y + cellH / 2;
 
-                // خط أسود حول الرقم ليظهر بوضوح فوق أي خلفية مهما كان لونها
-                ctx.strokeStyle = 'rgba(0,0,0,1)';
-                ctx.lineWidth = 3;
+                // إطار أسود حول الرقم شفاف بنسبة 50% لتسهيل قراءة الموقع خلفه
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.lineWidth = 2;
                 ctx.strokeText(String(i), tx, ty);
                 ctx.fillText(String(i), tx, ty);
             }
@@ -801,4 +801,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت المطور يعمل الآن (600 مربع شفاف بالكامل + المتابعة إلى AF2)...");
+console.log("🤖 البوت المطور يعمل الآن (1125 مربع دقيق وشفاف + المتابعة إلى AF2)...");
