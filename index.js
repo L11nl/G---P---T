@@ -1,4 +1,4 @@
-/*
+ /*
  * ==========================================================
  * ChatGPT 2FA Automator & Playwright Script Generator
  * ==========================================================
@@ -58,11 +58,11 @@ class PlaywrightCodeGenerator {
     }
 }
 
-// ================= دوال مساعدة لإنشاء البريد =================
+// =================عدلت 16 الى 12/دوال مساعدة لإنشاء البريد =================
 function generateSecurePassword() {
-    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    const chars = "00CHAT700z00";
     let password = "";
-    for(let i=0; i<16; i++) password += chars.charAt(crypto.randomInt(0, chars.length));
+    for(let i=0; i<12; i++) password += chars.charAt(crypto.randomInt(0, chars.length));
     return password;
 }
 
@@ -317,10 +317,10 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             if (await bdayInput.isVisible({ timeout: 2000 }).catch(() => false)) {
                 await bdayInput.focus().catch(()=>{}); await bdayInput.click({ force: true }).catch(()=>{});
                 await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');
-                await page.keyboard.type("25", { delay: 150 });
+                await page.keyboard.type("01012000", { delay: 150 });
             } else {
                 await page.keyboard.press('Tab');
-                await page.keyboard.type("25", { delay: 150 });
+                await page.keyboard.type("01012000", { delay: 150 });
             }
             const finishBtn = page.getByRole("button", { name: "Continue" }).last();
             if (await finishBtn.isVisible().catch(() => false)) await finishBtn.click({ force: true });
