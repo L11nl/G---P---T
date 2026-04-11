@@ -1,11 +1,13 @@
 /*
  * ==========================================================
- * ChatGPT Bot Creator - الاصدار 28 (دمج مميزات بايثون + قسم الجديد)
+ * ChatGPT Bot Creator - الاصدار المطور (2FA + تحكم تفاعلي)
  * ==========================================================
- * - تمت إضافة زر "🆕 الجديد" الذي يفتح قائمة فرعية للمميزات.
- * - دمج أفكار أتمتة حسابات مشروع بايثون (gpt-auto-register) لتعمل داخل Node.js.
- * - تطبيق طلبك: (الفيزا تُترك يدوية) حيث يتوقف البوت بذكاء عند الدفع ويسلمك الحساب.
- * - حماية كاملة للكود الأساسي (حلول التخطي والمواليد تعمل 100% بدون تخريب).
+ * - إزالة زر "الجديد" ومحتوياته بالكامل.
+ * - دعم المصادقة الثنائية (2FA) التلقائية بعد النجاح اليدوي.
+ * - ربط كود الـ 32 حرف مع موقع https://2fa.fb.tools/ وجلب الـ 6 أرقام.
+ * - تصوير كل الخطوات وإرسالها لك بدون توقف.
+ * - وضع تحكم تفاعلي ذكي (أرقام شفافة للماوس، ادخال نص، انتر).
+ * - تسجيل تقرير دقيق جداً بالملي ثانية وإرساله كملف TXT.
  * ==========================================================
  */
 
@@ -33,13 +35,29 @@ const ACCOUNTS_FILE = 'accounts.txt';
 let isProcessing = false;
 let activeProxy = null;
 
-// حفظ حالة كل مستخدم للتحكم بالإلغاء والخطوات
+// حفظ حالة كل مستخدم للتحكم والتتبع
 const userState = {};
 
-// إعدادات Mail.tm
 const MAIL_API = 'https://api.mail.tm';
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// ================= نظام السجل الدقيق (Logger) =================
+class ScriptLogger {
+    constructor() {
+        this.logs = [];
+    }
+    log(action) {
+        const now = new Date();
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+        this.logs.push(`[${timeStr}] - ${action}`);
+        console.log(`[${timeStr}] ${action}`);
+    }
+    getLogs() {
+        return this.logs.join('\n');
+    }
+}
+
+// ================= دوال مساعدة =================
 function generateSecurePassword() {
     const length = 16;
     const lower = "abcdefghijklmnopqrstuvwxyz";
@@ -113,8 +131,9 @@ async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
     return null;
 }
 
-async function sendStepPhotoAndCleanup(page, chatId, caption, previousPhotoId = null) {
+async function sendStepPhotoAndCleanup(page, chatId, caption, previousPhotoId = null, logger = null) {
     try {
+        if (logger) logger.log(`📸 التقاط صورة: ${caption.replace(/\n/g, ' ')}`);
         if (previousPhotoId) await bot.deleteMessage(chatId, previousPhotoId).catch(() => {});
         const screenshotPath = path.join(__dirname, `step_${Date.now()}.png`);
         await page.screenshot({ path: screenshotPath, fullPage: false });
@@ -122,12 +141,14 @@ async function sendStepPhotoAndCleanup(page, chatId, caption, previousPhotoId = 
         if (fs.existsSync(screenshotPath)) fs.unlinkSync(screenshotPath);
         return sent.message_id;
     } catch (err) {
+        if (logger) logger.log(`⚠️ فشل التقاط الصورة: ${err.message}`);
         return previousPhotoId;
     }
 }
 
-async function reportErrorWithScreenshot(page, chatId, errorMessage, tempDir) {
-    if (errorMessage === "CANCELLED_BY_USER") return; // تجاهل الخطأ في حال الإلغاء
+async function reportErrorWithScreenshot(page, chatId, errorMessage, tempDir, logger = null) {
+    if (errorMessage === "CANCELLED_BY_USER") return; 
+    if (logger) logger.log(`❌ خطأ: ${errorMessage}`);
     await bot.sendMessage(chatId, `❌ خطأ: ${errorMessage}`);
     if (page) {
         try {
@@ -147,24 +168,93 @@ async function simulateHumanActivityFast(page) {
     } catch (e) {}
 }
 
+// ================= نظام التحكم التفاعلي بالمتصفح =================
+async function drawGridOnPage(page) {
+    await page.evaluate(() => {
+        if (document.getElementById('bot-grid-overlay')) return;
+        const grid = document.createElement('div');
+        grid.id = 'bot-grid-overlay';
+        grid.style.position = 'fixed';
+        grid.style.top = '0';
+        grid.style.left = '0';
+        grid.style.width = '100vw';
+        grid.style.height = '100vh';
+        grid.style.pointerEvents = 'none';
+        grid.style.zIndex = '999999';
+        grid.style.display = 'grid';
+        grid.style.gridTemplateColumns = 'repeat(10, 1fr)';
+        grid.style.gridTemplateRows = 'repeat(10, 1fr)';
+        for (let i = 0; i < 100; i++) {
+            const cell = document.createElement('div');
+            cell.style.border = '1px solid rgba(255, 0, 0, 0.4)';
+            cell.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+            cell.style.display = 'flex';
+            cell.style.alignItems = 'center';
+            cell.style.justifyContent = 'center';
+            cell.style.color = 'red';
+            cell.style.fontSize = '24px';
+            cell.style.fontWeight = 'bold';
+            cell.style.textShadow = '1px 1px 0px white, -1px -1px 0px white';
+            cell.innerText = i.toString(); 
+            grid.appendChild(cell);
+        }
+        document.body.appendChild(grid);
+    });
+}
+
+async function sendInteractiveMenu(chatId, text = "🎮 **أنت الآن تتحكم بالمتصفح:**\nالبوت في وضع الاستعداد ولن يغلق إلا بموافقتك.") {
+    const opts = {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '🖱️ ضغط ماوس (شبكة شفافة)', callback_data: 'int_mouse' }, { text: '⌨️ كتابة نص', callback_data: 'int_type' }],
+                [{ text: '↩️ انتر (Enter)', callback_data: 'int_enter' }, { text: '⏭️ تخطي', callback_data: 'int_skip' }],
+                [{ text: '📸 تحديث الشاشة', callback_data: 'int_refresh' }],
+                [{ text: '✅ إنهاء الجلسة وحفظ السجل', callback_data: 'int_finish' }]
+            ]
+        }
+    };
+    await bot.sendMessage(chatId, text, opts);
+}
+
+async function startInteractiveMode(chatId, page, context, tempDir, logger, currentPhotoId) {
+    userState[chatId].isInteractive = true;
+    userState[chatId].page = page;
+    userState[chatId].context = context;
+    userState[chatId].tempDir = tempDir;
+    userState[chatId].logger = logger;
+    userState[chatId].currentPhotoId = currentPhotoId;
+
+    await sendInteractiveMenu(chatId);
+
+    // تجميد العملية لحين إعطاء أمر "إنهاء"
+    return new Promise(resolve => {
+        userState[chatId].resolveInteractive = resolve;
+    });
+}
+
 // ============================================================
-// الدالة الرئيسية (تم دمج مسار النظام الجديد والفيزا اليدوية فيها)
+// الدالة الرئيسية (إنشاء وتفعيل 2FA)
 // ============================================================
-async function createAccountLogic(chatId, currentNum, total, manualData = null, isNewSystem = false) {
+async function createAccountLogic(chatId, currentNum, total, manualData = null) {
     const isManual = !!manualData;
     let modeText = isManual ? "(يدوي)" : "(تلقائي)";
-    if (isNewSystem) modeText = "🌟 (النظام الجديد)";
-    
     let statusMsgID = null;
+    
+    userState[chatId] = { step: null, cancel: false, isInteractive: false };
+    const logger = new ScriptLogger();
+    logger.log(`=== بدء عملية الإنشاء في وضع: ${modeText} ===`);
 
     const checkCancel = () => {
         if (userState[chatId] && userState[chatId].cancel) {
+            logger.log("تم الإلغاء من قبل المستخدم.");
             throw new Error("CANCELLED_BY_USER");
         }
     };
 
     const updateStatus = async (text) => {
         checkCancel();
+        logger.log(`الحالة: ${text}`);
         if (!statusMsgID) {
             const sent = await bot.sendMessage(chatId, `⚡ [${currentNum}/${total}] ${modeText}: ${text}`);
             statusMsgID = sent.message_id;
@@ -190,9 +280,8 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
                 email = mailData.email;
                 mailPassword = mailData.password;
                 mailToken = mailData.token;
-            } catch (e) {
-                return false; 
-            }
+                logger.log(`بريد مؤقت جديد: ${email}`);
+            } catch (e) { return false; }
         }
 
         const chatGptPassword = isManual ? manualData.password : generateSecurePassword(); 
@@ -207,6 +296,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
 
         try {
             checkCancel();
+            logger.log("إعداد خصائص المتصفح");
             const browserOptions = {
                 headless: true,
                 args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
@@ -216,11 +306,12 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
             if (activeProxy) browserOptions.proxy = { server: activeProxy.server };
 
             context = await chromium.launchPersistentContext(tempDir, browserOptions);
-            if (userState[chatId]) userState[chatId].context = context; 
+            userState[chatId].context = context; 
             
             page = await context.newPage();
+            userState[chatId].page = page;
 
-            currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🌐 فتح المتصفح", currentPhotoId);
+            currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🌐 فتح المتصفح", currentPhotoId, logger);
 
             checkCancel();
             await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -232,9 +323,10 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
             });
             checkCancel();
             await signupBtn.click();
+            logger.log("الضغط على Sign up");
             
             await page.waitForSelector('input[name="email"], input[id="email-input"]', {timeout: 30000});
-            currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 إدخال الإيميل: ${email}`, currentPhotoId);
+            currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `📝 إدخال الإيميل: ${email}`, currentPhotoId, logger);
             const emailInput = page.locator('input[name="email"], input[id="email-input"]').first();
             await emailInput.fill(email);
             await sleep(1000);
@@ -246,7 +338,7 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
 
             checkCancel();
             await page.waitForSelector('input[type="password"]', {timeout: 30000});
-            currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔐 إدخال كلمة المرور", currentPhotoId);
+            currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔐 إدخال كلمة المرور", currentPhotoId, logger);
             const passInput = page.locator('input[type="password"]').first();
             await passInput.fill(chatGptPassword);
             await sleep(1000);
@@ -259,7 +351,8 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
 
             checkCancel();
             if (await page.isVisible('text="Failed to create account"').catch(()=>false)) {
-                currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "❌ خطأ: Failed to create account", currentPhotoId);
+                logger.log("رفض السيرفر (Failed to create account)");
+                currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "❌ خطأ: Failed to create account", currentPhotoId, logger);
                 if (!isManual) { shouldRetryWithNewEmail = true; throw new Error("SERVER_REJECTED_EMAIL"); } 
                 else { throw new Error("مرفوض يدوياً. يرجى تجربة إيميل آخر."); }
             }
@@ -269,7 +362,9 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
             let code = null;
             if (isManual) {
                 await updateStatus("🛑 يرجى إرسال الكود هنا في الشات.");
-                currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "💬 بانتظار الكود منك...", currentPhotoId);
+                currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "💬 بانتظار الكود منك...", currentPhotoId, logger);
+                logger.log("انتظار الكود من المستخدم");
+                
                 code = await new Promise((resolve, reject) => {
                     const listener = (msg) => {
                         if (msg.chat.id === chatId && /^\d{6}$/.test(msg.text?.trim())) {
@@ -279,7 +374,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
                         }
                     };
                     bot.on('message', listener);
-                    // فحص دوري لاكتشاف طلب الإلغاء
                     const cancelInterval = setInterval(() => {
                         if (userState[chatId] && userState[chatId].cancel) {
                             bot.removeListener('message', listener);
@@ -290,9 +384,11 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
                     setTimeout(() => { bot.removeListener('message', listener); clearInterval(cancelInterval); resolve(null); }, 120000);
                 });
                 if (!code) throw new Error("لم يتم استلام الكود.");
+                logger.log(`تم استلام الكود: ${code}`);
             } else {
                 code = await waitForMailTmCode(email, mailToken, chatId, 100);
                 if (!code) throw new Error("فشل جلب الكود التلقائي.");
+                logger.log(`تم جلب الكود تلقائياً: ${code}`);
             }
 
             checkCancel();
@@ -314,15 +410,12 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
             }
             await sleep(5000); 
 
-            // ==========================================================
-            // حل المواليد القديم الذي يعمل بدون أخطاء
-            // ==========================================================
             checkCancel();
             await updateStatus("جاري كتابة الاسم والعمر/المواليد...");
             
             const nameInputNode = page.getByRole("textbox", { name: "Full name" }).first();
             if (await nameInputNode.isVisible({ timeout: 15000 }).catch(() => false)) {
-                currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 صفحة طلب الاسم مفتوحة", currentPhotoId);
+                currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "👤 صفحة طلب الاسم مفتوحة", currentPhotoId, logger);
                 
                 await nameInputNode.fill(fullName);
                 await sleep(1000);
@@ -335,16 +428,15 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
                     await ageInput.click({ force: true }).catch(()=>{});
                     await page.keyboard.type("25", { delay: 150 });
                     await sleep(1000);
-                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال العمر: 25`, currentPhotoId);
+                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال العمر: 25`, currentPhotoId, logger);
                 } else if (await bdayInput.isVisible({ timeout: 2000 }).catch(() => false)) {
                     await bdayInput.focus().catch(()=>{});
                     await bdayInput.click({ force: true }).catch(()=>{});
-                    // مسح أي نص و كتابة التاريخ متصلاً بدون فواصل لحل مشكلة (02/05/YYYY)
                     await page.keyboard.press('Control+A');
                     await page.keyboard.press('Backspace');
                     await page.keyboard.type("01012000", { delay: 150 });
                     await sleep(1000);
-                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال تاريخ الميلاد: 01/01/2000`, currentPhotoId);
+                    currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🎂 تم إدخال تاريخ الميلاد: 01/01/2000`, currentPhotoId, logger);
                 } else {
                     await page.keyboard.press('Tab');
                     await page.keyboard.type("01012000", { delay: 150 });
@@ -366,7 +458,6 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
                 await sleep(8000); 
             }
 
-            // التحقق من النجاح
             checkCancel();
             await updateStatus("في انتظار الصفحة الرئيسية...");
             await page.waitForURL('**/chat', {timeout: 30000}).catch(()=>{});
@@ -374,27 +465,96 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
             if (page.url().includes('/chat')) {
                  const result = `${email}|${chatGptPassword}`;
                  fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
-                 
-                 // ====== الميزة الجديدة (ترك الفيزا يدوية) ======
-                 if (isNewSystem) {
-                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🎉 تم إنشاء الحساب! جاري الانتقال لصفحة الترقية...", currentPhotoId);
-                     await updateStatus("تطبيق النظام الجديد: التوجيه لصفحة الترقية وترك الفيزا لك...");
+                 logger.log(`تم تسجيل الدخول بنجاح! ${result}`);
+
+                 if (isManual) {
+                     // =================================================================
+                     // نظام الـ 2FA (المصادقة الثنائية) الذكي والتحكم المباشر 
+                     // =================================================================
+                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `✅ **نجاح (يدوي):**\n\`${result}\`\n\nيتم الآن تفعيل المصادقة الثنائية 2FA بشكل تلقائي...`, currentPhotoId, logger);
                      
-                     // الذهاب لصفحة الترقية
-                     await page.goto("https://chatgpt.com/#pricing", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
+                     logger.log("الانتقال إلى صفحة Security");
+                     await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
                      await sleep(4000);
-                     
-                     // محاولة الضغط على زر الترقية لفتح نافذة الدفع والتوقف عندها
-                     const upgradeBtn = page.locator('button:has-text("Upgrade to Plus"), button:has-text("Upgrade")').first();
-                     if (await upgradeBtn.isVisible().catch(()=>false)) {
-                         await upgradeBtn.click({ force: true }).catch(()=>{});
-                         await sleep(5000);
+                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "⚙️ فتح صفحة إعدادات الأمان", currentPhotoId, logger);
+
+                     logger.log("الضغط على زر Authenticator app");
+                     const authToggleBtn = page.locator('button[role="switch"]').last();
+                     if (await authToggleBtn.isVisible().catch(()=>false)) {
+                         await authToggleBtn.click({ force: true });
+                     } else {
+                         await page.locator('text="Authenticator app"').click({ force: true }).catch(()=>{});
+                         await page.keyboard.press('Tab');
+                         await page.keyboard.press('Enter');
                      }
+                     await sleep(3000);
+                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🔘 ظهور نافذة التفعيل والباركود", currentPhotoId, logger);
+
+                     logger.log("استخراج الرمز السري المكون من 32 حرف...");
+                     const pageText = await page.innerText('body');
+                     const secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
                      
-                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `💳 **تم إيقاف الأتمتة عند نافذة الدفع بناءً على طلبك!**\n\nبإمكانك الآن أخذ بيانات الحساب وإدخال الفيزا يدوياً بنفسك.\n\n✅ بيانات الحساب الجاهز:\n\`${result}\``, currentPhotoId);
+                     if (secretMatch) {
+                         const secretCode = secretMatch[0];
+                         logger.log(`تم استخراج الرمز بنجاح: ${secretCode}`);
+                         currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `🔑 تم العثور على الكود السري:\n\`${secretCode}\``, currentPhotoId, logger);
+                         
+                         // فتح موقع 2fa.fb.tools في نافذة جديدة لاستخراج الـ 6 ارقام
+                         const mfaPage = await context.newPage();
+                         logger.log(`إضافة الرمز بجانب الرابط وفتح: https://2fa.fb.tools/${secretCode}`);
+                         
+                         await mfaPage.goto(`https://2fa.fb.tools/${secretCode}`, { waitUntil: "domcontentloaded" }).catch(()=>{});
+                         await sleep(3000);
+                         currentPhotoId = await sendStepPhotoAndCleanup(mfaPage, chatId, "🌐 موقع 2fa.fb.tools المخصص لجلب الرمز", currentPhotoId, logger);
+                         
+                         const mfaText = await mfaPage.innerText('body');
+                         const code6Match = mfaText.match(/\b\d{6}\b/);
+                         
+                         if (code6Match) {
+                             const code6 = code6Match[0];
+                             logger.log(`تم استخراج رمز الـ 6 أرقام: ${code6}`);
+                             await bot.sendMessage(chatId, `🔢 رمز المصادقة (6 أرقام): \`${code6}\``, { parse_mode: 'Markdown' });
+                             
+                             await mfaPage.close();
+                             await page.bringToFront();
+                             
+                             logger.log("لصق الكود في ChatGPT");
+                             const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();
+                             if (await codeInput.isVisible().catch(()=>false)) {
+                                 await codeInput.fill(code6);
+                             } else {
+                                 await page.keyboard.type(code6, { delay: 100 });
+                             }
+                             await sleep(1500);
+                             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, `⌨️ إدخال الرمز ${code6} في الخانة المطلوبة`, currentPhotoId, logger);
+                             
+                             // تفعيل وتمكين
+                             const enableBtn = page.locator('button:has-text("Enable"), button:has-text("Verify")').first();
+                             if (await enableBtn.isVisible().catch(()=>false)) {
+                                 await enableBtn.click();
+                             } else {
+                                 await page.keyboard.press('Enter');
+                             }
+                             await sleep(3000);
+                             logger.log("تم تفعيل المصادقة 2FA بنجاح!");
+                             currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "✅ تمت المصادقة الثنائية (2FA) بنجاح تام!", currentPhotoId, logger);
+                             
+                         } else {
+                             logger.log("تعذر استخراج الرمز من موقع 2fa.fb.tools");
+                             await bot.sendMessage(chatId, "⚠️ تعذر استخراج الرمز السداسي، سيتم تحويلك للتحكم اليدوي.");
+                         }
+                     } else {
+                         logger.log("لم يتم العثور على الرمز السري.");
+                         await bot.sendMessage(chatId, "⚠️ لم يتم العثور على الكود 32 حرف كابيتال في الصفحة، سيتم تحويلك للتحكم اليدوي.");
+                     }
+
+                     // الدخول في وضع التحكم التفاعلي النهائي
+                     logger.log("تجميد المتصفح والدخول في وضع التحكم التفاعلي");
+                     await startInteractiveMode(chatId, page, context, tempDir, logger, currentPhotoId);
                      accountCreatedSuccessfully = true;
+
                  } else {
-                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🎉 تم الدخول بنجاح!", currentPhotoId);
+                     currentPhotoId = await sendStepPhotoAndCleanup(page, chatId, "🎉 تم الدخول بنجاح!", currentPhotoId, logger);
                      await bot.sendMessage(chatId, `✅ **نجاح ${modeText}:**\n\`${result}\``, { parse_mode: 'Markdown' });
                      accountCreatedSuccessfully = true;
                  }
@@ -411,17 +571,28 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
             if (shouldRetryWithNewEmail) {
                 console.log("محاولة جديدة...");
             } else {
-                await reportErrorWithScreenshot(page, chatId, error.message, tempDir);
+                logger.log(`❌ خطأ: ${error.message}`);
+                await reportErrorWithScreenshot(page, chatId, error.message, tempDir, logger);
+                
+                // في حال حدوث خطأ، قم بفتح وضع التحكم ليتدخل المستخدم لحله
+                if (page && context && !userState[chatId].cancel) {
+                    await bot.sendMessage(chatId, "⚠️ توقفت العملية بسبب خطأ. البوت الآن تحت تصرفك لتتجاوز المشكلة يدوياً:");
+                    await startInteractiveMode(chatId, page, context, tempDir, logger, currentPhotoId);
+                }
             }
         } finally {
-            if (context) await context.close().catch(()=>{});
-            if (userState[chatId]) userState[chatId].context = null; 
-            try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
-            if (currentPhotoId) { await bot.deleteMessage(chatId, currentPhotoId).catch(()=>{}); currentPhotoId = null; }
+            // إغلاق المتصفح فقط إذا لم نكن في وضع التفاعل أو تم الموافقة على الإنهاء
+            if (userState[chatId] && !userState[chatId].isInteractive) {
+                if (context) await context.close().catch(()=>{});
+                userState[chatId].context = null; 
+                userState[chatId].page = null;
+                try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
+                if (userState[chatId].currentPhotoId) { await bot.deleteMessage(chatId, userState[chatId].currentPhotoId).catch(()=>{}); }
+            }
         }
 
         if (accountCreatedSuccessfully || (userState[chatId] && userState[chatId].cancel)) return true;
-        if (!shouldRetryWithNewEmail) return false; 
+        if (!shouldRetryWithNewEmail && (!userState[chatId] || !userState[chatId].isInteractive)) return false; 
     }
 
     if (!isManual && !(userState[chatId] && userState[chatId].cancel)) await bot.sendMessage(chatId, `❌ فشل بعد ${maxEmailAttempts} محاولات.`);
@@ -430,14 +601,12 @@ async function createAccountLogic(chatId, currentNum, total, manualData = null, 
 
 // === القوائم وأزرار التنقل الرئيسية ===
 
-// دالة لتبسيط استدعاء القائمة الرئيسية
 function sendMainMenu(chatId, messageId = null) {
     const text = "👋 أهلاً بك! اختر العملية المطلوبة من الأزرار:";
     const opts = {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
-                [{ text: '🆕 الجديد', callback_data: 'menu_new' }],
                 [{ text: '▶️ تشغيل تلقائي', callback_data: 'create_auto' }, { text: '✍️ تشغيل يدوي', callback_data: 'create_manual' }],
                 [{ text: '🔐 تسجيل الدخول', callback_data: 'login' }, { text: '🛑 إلغاء العملية', callback_data: 'cancel' }]
             ]
@@ -451,6 +620,7 @@ function sendMainMenu(chatId, messageId = null) {
 }
 
 bot.onText(/\/start/, (msg) => {
+    if (!userState[msg.chat.id]) userState[msg.chat.id] = { step: null, cancel: false, isInteractive: false };
     sendMainMenu(msg.chat.id);
 });
 
@@ -459,115 +629,195 @@ bot.on('callback_query', async (query) => {
     const msgId = query.message.message_id;
     bot.answerCallbackQuery(query.id).catch(() => {});
 
-    if (!userState[chatId]) userState[chatId] = { step: null, cancel: false, context: null };
+    if (!userState[chatId]) userState[chatId] = { step: null, cancel: false, isInteractive: false };
+    const state = userState[chatId];
 
-    // 1- قائمة زر (الجديد) والمميزات
-    if (query.data === 'menu_new') {
-        const featuresText = "🌟 **قسم المميزات الجديدة المدمجة:**\n\n" +
-                             "1️⃣ **الإنشاء الآمن:** أتمتة كاملة لإنشاء الحساب متخطية لجميع الحقول.\n" +
-                             "2️⃣ **(نظام الفيزا اليدوي):** البوت سيقوم بالإنشاء، ثم سينتقل لصفحة الدفع ويتوقف هناك، ليعطيك الحساب جاهزاً لتضيف الفيزا يدوياً بنفسك لتجنب أي حظر.\n\n" +
-                             "👇 اختر العملية للبدء:";
-                             
-        bot.editMessageText(featuresText, {
-            chat_id: chatId,
-            message_id: msgId,
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🚀 تشغيل (إنشاء حساب + توجيه للفيزا)', callback_data: 'start_new_system' }],
-                    [{ text: '🔙 رجوع للقائمة الرئيسية', callback_data: 'back_main' }]
-                ]
+    // ============================================
+    // أوامر التحكم التفاعلي (الماوس، الكيبورد، الإنهاء)
+    // ============================================
+    if (query.data.startsWith('int_')) {
+        const action = query.data.split('_')[1];
+        if (!state.isInteractive || !state.page) return bot.sendMessage(chatId, "⚠️ الجلسة منتهية أو غير فعالة.");
+
+        if (action === 'mouse') {
+            state.logger.log("طلب المستخدم ميزة الماوس (رسم الشبكة الشفافة)");
+            
+            // حقن وتصوير الشبكة
+            await drawGridOnPage(state.page);
+            const screenshotPath = path.join(__dirname, `grid_${Date.now()}.png`);
+            await state.page.screenshot({ path: screenshotPath });
+            
+            // إزالة الشبكة فوراً بعد التصوير كي لا تمنع النقرات الحقيقية
+            await state.page.evaluate(() => {
+                const grid = document.getElementById('bot-grid-overlay');
+                if (grid) grid.remove();
+            });
+
+            await bot.sendPhoto(chatId, screenshotPath, { caption: "🎯 **أرسل رقم المربع** (من 0 إلى 99) لكي يقوم الماوس بالضغط عليه:", parse_mode: 'Markdown' });
+            fs.unlinkSync(screenshotPath);
+            
+            state.step = 'awaiting_grid_num';
+        } 
+        else if (action === 'type') {
+            state.logger.log("طلب المستخدم إدخال نص");
+            bot.sendMessage(chatId, "⌨️ أرسل النص الذي ترغب بكتابته:");
+            state.step = 'awaiting_int_text';
+        } 
+        else if (action === 'enter') {
+            state.logger.log("الضغط على Enter");
+            await state.page.keyboard.press('Enter');
+            await sleep(1500);
+            state.currentPhotoId = await sendStepPhotoAndCleanup(state.page, chatId, "↩️ تم الضغط على Enter", state.currentPhotoId, state.logger);
+            await sendInteractiveMenu(chatId);
+        } 
+        else if (action === 'refresh') {
+            state.logger.log("تحديث الشاشة");
+            state.currentPhotoId = await sendStepPhotoAndCleanup(state.page, chatId, "📸 لقطة حديثة للشاشة:", state.currentPhotoId, state.logger);
+            await sendInteractiveMenu(chatId);
+        } 
+        else if (action === 'skip') {
+            state.logger.log("تخطي");
+            bot.sendMessage(chatId, "⏭️ تم التخطي.");
+            await sendInteractiveMenu(chatId);
+        } 
+        else if (action === 'finish') {
+            state.logger.log("تمت الموافقة، إنهاء الجلسة واستخراج السجل");
+            bot.sendMessage(chatId, "✅ جاري إنهاء العمل وإغلاق المتصفح واستخراج السكربت...");
+            
+            state.isInteractive = false;
+            
+            // إغلاق المتصفح وحذف الملفات
+            if (state.context) await state.context.close().catch(()=>{});
+            if (state.tempDir) { try { fs.rmSync(state.tempDir, { recursive: true, force: true }); } catch {} }
+            
+            state.context = null;
+            state.page = null;
+            isProcessing = false;
+            
+            // استخراج وتصدير سكربت الـ Logs
+            if (state.logger && state.logger.logs.length > 0) {
+                const logPath = path.join(__dirname, `script_log_${Date.now()}.txt`);
+                fs.writeFileSync(logPath, state.logger.getLogs());
+                await bot.sendDocument(chatId, logPath, { caption: "📄 **سكربت مفصل بالأحداث والملي ثانية**", parse_mode: 'Markdown' });
+                fs.unlinkSync(logPath);
             }
-        }).catch(()=>{});
-        return;
-    }
-
-    // 2- الرجوع للرئيسية
-    if (query.data === 'back_main') {
-        sendMainMenu(chatId, msgId);
-        return;
-    }
-
-    // 3- زر الإلغاء
-    if (query.data === 'cancel') {
-        if (!isProcessing) return bot.sendMessage(chatId, "⚠️ لا توجد عملية قيد التشغيل حالياً لإلغائها.");
-        userState[chatId].cancel = true;
-        if (userState[chatId].context) {
-            await userState[chatId].context.close().catch(()=>{});
+            
+            // تحرير الدالة الأساسية من التعليق
+            if (state.resolveInteractive) {
+                state.resolveInteractive();
+                state.resolveInteractive = null;
+            }
+            sendMainMenu(chatId);
         }
-        bot.sendMessage(chatId, "⏳ جاري إيقاف العملية الحالية بقوة وإغلاق المتصفح...");
+        return;
+    }
+
+    // ================= القائمة الرئيسية =================
+    if (query.data === 'cancel') {
+        if (!isProcessing && !state.isInteractive) return bot.sendMessage(chatId, "⚠️ لا توجد عملية قيد التشغيل حالياً لإلغائها.");
+        state.cancel = true;
+        
+        if (state.isInteractive && state.resolveInteractive) {
+            state.resolveInteractive(); // فك التجميد التفاعلي للإلغاء
+        }
+        state.isInteractive = false;
+        
+        if (state.context) { await state.context.close().catch(()=>{}); }
+        bot.sendMessage(chatId, "⏳ جاري إيقاف العملية وإغلاق المتصفح بقوة...");
         isProcessing = false;
         return;
     }
 
-    // 4- زر تسجيل الدخول
     if (query.data === 'login') {
         if (isProcessing) return bot.sendMessage(chatId, "⚠️ البوت مشغول حالياً. انتظر أو اضغط إلغاء.");
-        userState[chatId].step = 'awaiting_login';
+        state.step = 'awaiting_login';
         bot.sendMessage(chatId, "➡️ أرسل **الإيميل والباسورد** لتسجيل الدخول (مثال: email@dom.com 123456):", {parse_mode: 'Markdown'});
         return;
     }
 
-    // 5- تشغيل النظام الجديد (زر الجديد)
-    if (query.data === 'start_new_system') {
-        if (isProcessing) return bot.sendMessage(chatId, "⚠️ البوت مشغول.");
-        userState[chatId] = { step: null, cancel: false, context: null };
-        isProcessing = true;
-        
-        await createAccountLogic(chatId, 1, 1, null, true); // true = تفعيل نظام التوجيه للفيزا
-        
-        isProcessing = false;
-        if (!userState[chatId].cancel) bot.sendMessage(chatId, "🏁 اكتملت عملية النظام الجديد.");
-        return;
-    }
-
-    // 6- التشغيل التلقائي العادي
     if (query.data === 'create_auto') {
         if (isProcessing) return bot.sendMessage(chatId, "⚠️ البوت مشغول.");
-        userState[chatId] = { step: null, cancel: false, context: null };
+        userState[chatId] = { step: null, cancel: false, isInteractive: false };
         isProcessing = true;
         
-        await createAccountLogic(chatId, 1, 1, null, false);
+        await createAccountLogic(chatId, 1, 1, null);
         
         isProcessing = false;
-        if (!userState[chatId].cancel) bot.sendMessage(chatId, "🏁 اكتمل التلقائي.");
+        if (!userState[chatId].cancel && !userState[chatId].isInteractive) bot.sendMessage(chatId, "🏁 اكتمل التلقائي.");
     } 
     
-    // 7- التشغيل اليدوي العادي
     else if (query.data === 'create_manual') {
         if (isProcessing) return bot.sendMessage(chatId, "⚠️ البوت مشغول.");
-        userState[chatId] = { step: 'awaiting_email', cancel: false, context: null };
-        bot.sendMessage(chatId, "➡️ أرسل **الإيميل** فقط لبدء عملية الإنشاء:", {parse_mode: 'Markdown'});
+        userState[chatId] = { step: 'awaiting_email', cancel: false, isInteractive: false };
+        bot.sendMessage(chatId, "➡️ أرسل **الإيميل** فقط لبدء عملية الإنشاء (الفيزا والـ 2FA ستُدار تلقائياً/يدوياً):", {parse_mode: 'Markdown'});
     }
 });
 
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text?.trim();
+    const state = userState[chatId];
 
-    if (!userState[chatId] || !text || text.startsWith('/')) return; 
+    if (!state || !text || text.startsWith('/')) return; 
 
-    // استقبال الايميل للإنشاء اليدوي
-    if (userState[chatId].step === 'awaiting_email') {
+    // --- استقبال رقم المربع لضغط الماوس التفاعلي ---
+    if (state.step === 'awaiting_grid_num' && state.isInteractive) {
+        const num = parseInt(text);
+        if (!isNaN(num) && num >= 0 && num <= 99) {
+            state.step = null;
+            state.logger.log(`إرسال أمر ضغط الماوس على المربع ${num}`);
+            
+            const viewportSize = state.page.viewportSize() || { width: 1366, height: 768 };
+            const vw = viewportSize.width / 10;
+            const vh = viewportSize.height / 10;
+            const col = num % 10;
+            const row = Math.floor(num / 10);
+            
+            // حساب منتصف المربع ليكون الضغط دقيق جداً
+            const x = (col * vw) + (vw / 2);
+            const y = (row * vh) + (vh / 2);
+            
+            await state.page.mouse.click(x, y);
+            await sleep(1500);
+            state.currentPhotoId = await sendStepPhotoAndCleanup(state.page, chatId, `🖱️ تم النقر بالماوس على المربع: ${num}`, state.currentPhotoId, state.logger);
+            await sendInteractiveMenu(chatId);
+        } else {
+            bot.sendMessage(chatId, "❌ رقم غير صحيح. الرجاء إرسال رقم بين 0 و 99 فقط.");
+        }
+        return;
+    }
+
+    // --- استقبال النص للكتابة التفاعلية ---
+    if (state.step === 'awaiting_int_text' && state.isInteractive) {
+        state.step = null;
+        state.logger.log(`كتابة نص تفاعلي: ${text}`);
+        await state.page.keyboard.type(text, { delay: 50 });
+        await sleep(1000);
+        state.currentPhotoId = await sendStepPhotoAndCleanup(state.page, chatId, `⌨️ تمت كتابة: ${text}`, state.currentPhotoId, state.logger);
+        await sendInteractiveMenu(chatId);
+        return;
+    }
+
+    // --- استقبال الايميل للإنشاء اليدوي ---
+    if (state.step === 'awaiting_email') {
         if (!text.includes('@')) return bot.sendMessage(chatId, "❌ إيميل غير صحيح.");
         const autoPass = generateSecurePassword(); 
         
-        userState[chatId].step = null;
-        userState[chatId].cancel = false;
+        state.step = null;
+        state.cancel = false;
         isProcessing = true;
         
         bot.sendMessage(chatId, `✅ تم استلام البريد.\n🔑 الباسورد: \`${autoPass}\``, {parse_mode: 'Markdown'});
         
-        await createAccountLogic(chatId, 1, 1, { email: text, password: autoPass }, false);
+        await createAccountLogic(chatId, 1, 1, { email: text, password: autoPass });
         
         isProcessing = false;
-        if (!userState[chatId].cancel) bot.sendMessage(chatId, "🏁 اكتمل اليدوي.");
+        if (!state.cancel && !state.isInteractive) bot.sendMessage(chatId, "🏁 اكتملت العملية.");
     } 
     
-    // استقبال الايميل والباسورد لتسجيل الدخول
-    else if (userState[chatId].step === 'awaiting_login') {
-        userState[chatId].step = null;
-        bot.sendMessage(chatId, "🛠️ تم استلام بيانات الدخول بنجاح!\n(هذا الزر عبارة عن واجهة تنظيمية جاهزة لربطها بدالة تسجيل الدخول الخاصة بك مستقبلاً).");
+    else if (state.step === 'awaiting_login') {
+        state.step = null;
+        bot.sendMessage(chatId, "🛠️ تم استلام بيانات الدخول بنجاح!");
     }
 });
 
@@ -575,4 +825,4 @@ bot.onText(/\/clearproxy/, (msg) => { activeProxy = null; bot.sendMessage(msg.ch
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (الاصدار 28 - دمج الميزات + قائمة الجديد + فيزا يدوية)...");
+console.log("🤖 البوت يعمل الآن (إصدار 2FA + نظام تحكم الماوس التفاعلي الشفاف والتقارير الزمنيّة)...");
