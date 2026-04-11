@@ -2,7 +2,7 @@
  * ==========================================================
  * ChatGPT 2FA Automator & Playwright Script Generator
  * ==========================================================
- * - تم حذف أي علاقة بالفيزا. الهدف (إنشاء + ربط 2FA) فقط.
+ * - تم حل مشكلة تحديث العمر (Age) وكتابة 25 والضغط على Finish.
  * - أداة توليد أكواد برمجية دقيقة (Playwright Code Builder).
  * - نظام تفاعلي قوي: بحث عن نصوص وضغطها برمجياً + كيبورد.
  * - نظام ماوس دقيق (300 مربع شفاف) مع نقطة حمراء 🔴 للتأكيد.
@@ -309,22 +309,64 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         else await page.keyboard.press('Enter');
         await sleep(5000); 
 
+        // ==========================================================
+        // 🌟 التعديل الخاص بصفحة العمر والاسم (Age vs Birthday) 🌟
+        // ==========================================================
         const nameInputNode = page.getByRole("textbox", { name: "Full name" }).first();
         if (await nameInputNode.isVisible({ timeout: 15000 }).catch(() => false)) {
             await nameInputNode.fill("Auto User");
+            codeGen.addCommand(`await page.getByRole("textbox", { name: "Full name" }).first().fill("Auto User");`);
             await sleep(1000);
+            
+            // قراءة النص الموجود بالصفحة لمعرفة إن كان يطلب Age أو Birthday
+            const bodyText = await page.innerText('body').catch(()=>'');
+            const isAge = bodyText.toLowerCase().includes('how old are you') || bodyText.toLowerCase().includes('age');
+            
+            // محاولة العثور على الحقل برمجياً
+            const ageInput = page.locator('input[name="age"], input[id*="age" i], [aria-label*="age" i]').first();
             const bdayInput = page.locator('input[name="birthday"], [aria-label*="birthday" i]').first();
-            if (await bdayInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-                await bdayInput.focus().catch(()=>{}); await bdayInput.click({ force: true }).catch(()=>{});
-                await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');
+            
+            // إذا كان يطلب العمر (Age)
+            if (await ageInput.isVisible({ timeout: 2000 }).catch(() => false) || isAge) {
+                if (await ageInput.isVisible().catch(() => false)) {
+                    await ageInput.focus().catch(()=>{}); 
+                    await ageInput.click({ force: true }).catch(()=>{});
+                } else {
+                    await page.keyboard.press('Tab');
+                }
+                await page.keyboard.press('Control+A'); // تحديد أي شيء مكتوب بالخطأ
+                await page.keyboard.press('Backspace'); // مسحه
+                await page.keyboard.type("25", { delay: 150 }); // كتابة 25
+                codeGen.addCommand(`await page.locator('input[name="age"]').fill("25");`);
+            } 
+            // إذا كان يطلب تاريخ الميلاد بالطريقة القديمة (Birthday)
+            else if (await bdayInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+                await bdayInput.focus().catch(()=>{}); 
+                await bdayInput.click({ force: true }).catch(()=>{});
+                await page.keyboard.press('Control+A'); 
+                await page.keyboard.press('Backspace');
                 await page.keyboard.type("01012000", { delay: 150 });
-            } else {
+                codeGen.addCommand(`await page.locator('input[name="birthday"]').fill("01012000");`);
+            } 
+            // حل بديل (Fallback) يضغط Tap ويكتب 25
+            else {
                 await page.keyboard.press('Tab');
-                await page.keyboard.type("01012000", { delay: 150 });
+                await page.keyboard.press('Control+A');
+                await page.keyboard.press('Backspace');
+                await page.keyboard.type("25", { delay: 150 });
+                codeGen.addCommand(`await page.keyboard.press('Tab'); await page.keyboard.type("25");`);
             }
-            const finishBtn = page.getByRole("button", { name: "Continue" }).last();
-            if (await finishBtn.isVisible().catch(() => false)) await finishBtn.click({ force: true });
-            else await page.keyboard.press('Enter');
+            await sleep(1000);
+
+            // الضغط على زر (Finish creating account)
+            const finishBtn = page.locator('button:has-text("Finish creating account"), button:has-text("Agree"), button:has-text("Continue")').last();
+            if (await finishBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+                await finishBtn.click({ force: true });
+                codeGen.addCommand(`await page.locator('button:has-text("Finish creating account")').last().click();`);
+            } else {
+                await page.keyboard.press('Enter');
+                codeGen.addCommand(`await page.keyboard.press('Enter');`);
+            }
             await sleep(8000); 
         }
 
@@ -401,7 +443,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                      }
                  }
                  
-                 // === الميزة المطلوبة: التنبيه وإظهار الشبكة تلقائياً عند عدم العثور على الكود 32 ===
                  codeGen.addComment("تعذر استخراج كود 32 حرف. تحويل المستخدم للوضع اليدوي والشبكة.");
                  await bot.sendMessage(chatId, "⚠️ **لم يتم العثور على الكود 32 حرف كابيتال في الصفحة، سيتم تحويلك للتحكم اليدوي.**");
                  await drawGridAndScreenshot(page, chatId, "🔲 **صورة الشاشة مقسمة لمربعات (20x15):**\nاستخدم الأرقام والزوايا في الصورة لمعرفة المكان الذي يجب الضغط عليه لتكملة السكربت.");
@@ -636,4 +677,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت المطور يعمل الآن (مولد أكواد Playwright + البحث عن نصوص + تحكم دقيق بالماوس)...");
+console.log("🤖 البوت المطور (تحديث الـ Age + Playwright Generator) يعمل الآن بنجاح...");
