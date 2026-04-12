@@ -8,7 +8,8 @@
  * - 🚀 الملاحة القسرية (Force Reload): تحديث الصفحة بعد الرابط لضمان فتح نافذة الإعدادات 100%.
  * - 🎯 الضغط الدقيق: الإحداثيات 986.56, 353.28 (تضرب المربع 527 بدقة).
  * - 📄 استخراج بيانات Session وحفظها في ملف txt.
- * - 🛡️ التحديث الجديد: حل جذري لمشكلة Age/Birthday + القفز المباشر من واجهات Where should we begin لإعدادات الأمان.
+ * - 🛡️ التحديث الجديد: حل جذري لمشكلة Age/Birthday + القفز المباشر من واجهات Where should we begin.
+ * - 💣 التحديث الأخير (كاسحة النوافذ V8): مسح النوافذ الإعلانية (Skip Tour / Ask anything) من طريق الماوس!
  * ==========================================================
  */
 
@@ -219,7 +220,7 @@ async function sendMouseMenu(chatId) {
     const opts = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
         [{ text: '👁️ مشاهدة المربعات الشفافة', callback_data: 'int_show_grid' }], [{ text: '🧭 إرسال رقم المربع (لتحريك الماوس)', callback_data: 'int_move_mouse' }],
         [{ text: '🔴 كليك (Click)', callback_data: 'int_click_mouse' }], [{ text: '🔙 رجوع للقائمة الرئيسية', callback_data: 'int_back_main' }]
-    ]}}; await bot.sendMessage(chatId, `🖱️ **قائمة التحكم بالماوس הדقيق:**`, opts);
+    ]}}; await bot.sendMessage(chatId, `🖱️ **قائمة التحكم بالماوس الدقيق:**`, opts);
 }
 
 async function startInteractiveMode(chatId, page, context, tempDir, codeGen) {
@@ -338,7 +339,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         await sleep(5000); 
 
         // ======================================================================
-        // 🛡️ التحديث الذكي الجذري للتفريق بين Age و Birthday ومنع التنسيق الخاطئ
+        // التفرقة الذكية بين Age و Birthday ومنع التنسيق الخاطئ
         // ======================================================================
         const nameInputNode = page.getByRole("textbox", { name: "Full name" }).first();
         if (await nameInputNode.isVisible({ timeout: 15000 }).catch(() => false)) {
@@ -351,7 +352,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
 
             if (await bdayInput.isVisible({ timeout: 2000 }).catch(() => false)) {
                 await bdayInput.focus().catch(()=>{}); await bdayInput.click({ force: true }).catch(()=>{});
-                for (let j = 0; j < 10; j++) await page.keyboard.press('Backspace'); // مسح التنسيقات السابقة بالقوة
+                for (let j = 0; j < 10; j++) await page.keyboard.press('Backspace'); 
                 await page.keyboard.type("01012000", { delay: 100 });
             } else if (await ageInput.isVisible({ timeout: 1000 }).catch(() => false)) {
                 await ageInput.focus().catch(()=>{}); await ageInput.click({ force: true }).catch(()=>{});
@@ -367,7 +368,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 }
             }
 
-            // تحديث الزر ليطابق الصور المرفقة
             const finishBtn = page.locator('button:has-text("Finish creating account"), button:has-text("Continue")').last();
             if (await finishBtn.isVisible().catch(() => false)) await finishBtn.click({ force: true });
             else await page.keyboard.press('Enter');
@@ -378,7 +378,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         await updateStatus("في انتظار الصفحة الرئيسية...");
         
         // ======================================================================
-        // 🛡️ التحديث الذكي: قراءة الكلمات المفتاحية والانتقال الفوري لإعدادات الأمان
+        // قراءة الكلمات المفتاحية والانتقال الفوري لإعدادات الأمان
         // ======================================================================
         let isMainReady = false;
         for (let i = 0; i < 15; i++) {
@@ -388,7 +388,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             const hasNewUI = bodyTxt.includes('Where should we begin?') || bodyTxt.includes('Claim offer') || bodyTxt.includes('New chat');
             const hasTextarea = await page.locator('#prompt-textarea, [placeholder*="Message" i], [aria-label*="Message" i]').isVisible().catch(()=>false);
             
-            // بمجرد أن يرى الواجهة الجديدة أو القديمة، سيعتبر الدخول ناجحاً وينطلق!
             if ((currentUrl.includes('chatgpt.com') && !currentUrl.includes('auth') && !currentUrl.includes('login')) || hasTextarea || hasNewUI) {
                 isMainReady = true;
                 break;
@@ -408,24 +407,73 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
              await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
              await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
              codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");\n    await page.reload({ waitUntil: "domcontentloaded" });`);
-             await sleep(5000);
+             
+             // ⏳ ننتظر بضع ثوانٍ تحسباً لظهور نافذة "Ask anything / Skip Tour" التي أرسلتها في الصورة
+             await sleep(5000); 
 
-             // تنظيف أي نوافذ عالقة
-             const earlyBtns = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];
-             for (let i = 0; i < 3; i++) {
-                 for (const bText of earlyBtns) {
+             // ======================================================================
+             // 💣 كاسحة النوافذ المدمرة V8 (لتفريغ الشاشة من الإعلانات وفتح المجال للماوس)
+             // ======================================================================
+             await updateStatus("إزالة النوافذ الترحيبية (Skip Tour) إن وجدت...");
+             
+             codeGen.addStep("إغلاق النوافذ الترحيبية (Skip Tour) التي تحجب الماوس");
+             codeGen.addRawBlock("مسح النوافذ الترحيبية التي تحجب الشاشة (Skip Tour / Next)", [
+                 `await page.keyboard.press('Escape');`,
+                 `await page.waitForTimeout(1000);`,
+                 `const popupTexts = ['Skip Tour', 'Skip', 'Next', 'Okay', 'Done'];`,
+                 `for (let i = 0; i < 2; i++) {`,
+                 `    for (const pText of popupTexts) {`,
+                 `        try {`,
+                 `            const btn = page.locator(\`button:has-text("\${pText}"), a:has-text("\${pText}"), [role="button"]:has-text("\${pText}")\`).last();`,
+                 `            if (await btn.isVisible({ timeout: 500 })) { await btn.click({ force: true }); await page.waitForTimeout(1000); }`,
+                 `        } catch (e) {}`,
+                 `    }`,
+                 `}`
+             ]);
+             
+             // 1. الضغط على (Escape) لأنه يخفي 90% من هذه النوافذ فوراً
+             await page.keyboard.press('Escape').catch(()=>{});
+             await sleep(1000);
+
+             // 2. كنس بقية الأزرار المزعجة
+             const popupTexts = ['Skip Tour', 'Skip', 'Next', 'Okay', 'Done'];
+             for (let i = 0; i < 2; i++) {
+                 for (const pText of popupTexts) {
                      try {
-                         let btn = page.getByText(bText, { exact: true }).last();
-                         if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) { await btn.click({ force: true }); await sleep(1000); }
-                         else {
-                             let btn2 = page.locator(`button:has-text("${bText}")`).last();
-                             if (await btn2.isVisible({ timeout: 500 }).catch(()=>false)) { await btn2.click({ force: true }); await sleep(1000); }
+                         const btn = page.locator(`button:has-text("${pText}"), a:has-text("${pText}"), [role="button"]:has-text("${pText}")`).last();
+                         if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
+                             await btn.click({ force: true });
+                             await sleep(1000);
                          }
                      } catch (e) {}
                  }
              }
 
-             // === الضغط على المربع 527 ===
+             // 3. تأمين شامل: التأكد أن صفحة الإعدادات لم تُغلق بالخطأ بسبب التحديث أو زر Escape
+             codeGen.addRawBlock("إعادة فتح نافذة الأمان في حال انغلقت بالخطأ أثناء المسح", [
+                 `try {`,
+                 `    const mfaVis = await page.locator('text="Multi-factor authentication"').first().isVisible();`,
+                 `    if (!mfaVis) {`,
+                 `        await page.goto("https://chatgpt.com/");`,
+                 `        await page.waitForTimeout(1000);`,
+                 `        await page.goto("https://chatgpt.com/#settings/Security");`,
+                 `        await page.waitForTimeout(3000);`,
+                 `    }`,
+                 `} catch(e) {}`
+             ]);
+
+             const mfaVisible = await page.locator('text="Multi-factor authentication"').first().isVisible().catch(()=>false);
+             const troubleVisibleCheck = await page.locator('text="Trouble scanning?"').first().isVisible().catch(()=>false);
+             if (!mfaVisible && !troubleVisibleCheck) {
+                 await updateStatus("إعادة فتح نافذة الأمان للتأكيد...");
+                 await page.goto("https://chatgpt.com/").catch(()=>{});
+                 await sleep(1000);
+                 await page.goto("https://chatgpt.com/#settings/Security").catch(()=>{});
+                 await sleep(4000);
+             }
+             // ======================================================================
+
+             // === الضغط على المربع 527 (الآن أصبح الطريق سالكاً تماماً أمام الماوس) ===
              codeGen.addStep("الضغط كليك بالماوس على المربع رقم (527) عبر الإحداثيات: X=986.56, Y=353.28");
              try { await page.mouse.click(986.56, 353.28); } catch(e) {}
              codeGen.addCommand(`await page.mouse.click(986.56, 353.28);`);
@@ -436,7 +484,8 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
              try {
                  let troubleBtn = page.locator('text="Trouble scanning?"').first();
                  if (!(await troubleBtn.isVisible({ timeout: 2000 }).catch(()=>false))) {
-                     const smartEnableBtn = page.locator('button:has-text("Enable")').last();
+                     // محاولة ذكية وبديلة إذا لم تجد الزر
+                     const smartEnableBtn = page.locator('button:has-text("Enable"), button:has-text("Set up")').last();
                      if (await smartEnableBtn.isVisible({ timeout: 1500 }).catch(()=>false)) { await smartEnableBtn.click({ force: true }); await sleep(2000); }
                  }
                  if (await troubleBtn.isVisible({ timeout: 2000 }).catch(()=>false)) await troubleBtn.click();
@@ -719,4 +768,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (تحديث: تجاوز الواجهة الجديدة وحل مشكلة العمر)");
+console.log("🤖 البوت يعمل بكفاءة قصوى (تحديث: كاسحة النوافذ المدمرة v8 مفعلة وجاهزة)...");
