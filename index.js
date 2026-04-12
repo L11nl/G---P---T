@@ -4,11 +4,11 @@
  * ==========================================================
  * - أداة توليد أكواد برمجية دقيقة (Playwright Code Builder).
  * - ترقيم تلقائي لجميع خطوات السكربت (الخطوة 1، الخطوة 2...).
- * - 🚀 الملاحة القسرية (Force Reload): تحديث الصفحة بعد الرابط لضمان فتح نافذة الإعدادات 100%.
+ * - 🚀 الملاحة القسرية (Force Reload).
  * - 🎯 الضغط الدقيق: الإحداثيات 986.56, 353.28 (تضرب المربع 527 بدقة).
  * - 📄 استخراج بيانات Session وحفظها في ملف txt.
- * - 🍎 التحديث 10 (الدرع المضاد): حماية من الدخول لصفحات Apple/Google والتراجع التلقائي للتصحيح.
- * - ✔️ التحديث 11 (كاسحة V11): استخدام Exact Match لمسح شاشة (You're all set) بدقة متناهية وبدون أخطاء.
+ * - 🍎 التحديث 10: حماية من الدخول لصفحات Apple/Google والتراجع.
+ * - 💣 التحديث 12 (الهجوم النووي DOM): استخدام حقن الجافاسكربت (page.evaluate) لتدمير شاشة "You're all set" الإجبارية حتى لو كانت مخفية أو مبرمجة بخبث.
  * ==========================================================
  */
 
@@ -80,7 +80,7 @@ class PlaywrightCodeGenerator {
     }
 }
 
-// ================= دوال مساعدة لإنشاء البريد =================
+// ================= دوال مساعدة =================
 function generateSecurePassword() {
     const chars = "00CHAT700z00";
     let password = "";
@@ -119,7 +119,6 @@ async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
     return null;
 }
 
-// ================= دالة تحديث حالة الرسالة النصية =================
 async function updateStatusMessage(chatId, text, messageId = null) {
     try {
         if (!messageId) {
@@ -134,7 +133,6 @@ async function updateStatusMessage(chatId, text, messageId = null) {
     } catch (err) { const sent = await bot.sendMessage(chatId, `⚡ ${text}`); return sent.message_id; }
 }
 
-// ================= إرسال صورة فقط للخطأ =================
 async function sendErrorScreenshot(page, chatId, errorMessage) {
     try {
         const p = path.join(__dirname, `error_${Date.now()}.png`);
@@ -144,7 +142,7 @@ async function sendErrorScreenshot(page, chatId, errorMessage) {
     } catch (err) { await bot.sendMessage(chatId, `❌ **توقف مؤقت:** ${errorMessage}\n(تعذر التقاط صورة للشاشة)`); }
 }
 
-// ================= أنظمة المربعات الشفافة الدقيقة =================
+// ================= أنظمة المربعات الشفافة والقوائم =================
 const GRID_COLS = 45; 
 const GRID_ROWS = 25; 
 const TOTAL_CELLS = GRID_COLS * GRID_ROWS; 
@@ -196,7 +194,6 @@ async function drawRedDot(page, x, y) {
 }
 async function removeRedDot(page) { await page.evaluate(() => { const dot = document.getElementById('bot-red-dot'); if (dot) dot.remove(); }); }
 
-// ================= أنظمة القوائم التفاعلية =================
 async function sendInteractiveMenu(chatId, text = "🎮 **أنت الآن تتحكم بالمتصفح:**\nالبوت في وضع الاستعداد ولن يغلق إلا بموافقتك.") {
     const opts = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
         [{ text: '🌐 البحث عن الرابط', callback_data: 'int_goto_url' }], [{ text: '🔍 البحث على النص والضغط عليه', callback_data: 'int_search_text' }],
@@ -279,9 +276,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         codeGen.addCommand(`await page.locator('input[type="email"]').first().fill("${email}");`);
         await sleep(1000);
         
-        // ======================================================================
-        // 🍎 التحديث V11: درع الحماية لعدم التحويل لموقع Apple / Google
-        // ======================================================================
+        // درع الحماية ضد Apple/Google
         codeGen.addStep("الاستمرار بعد إدخال الإيميل (مع تفادي زر Apple و Google)");
         try {
             const submitBtn1 = page.locator('button[type="submit"]').first();
@@ -297,9 +292,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 await page.keyboard.press('Enter');
                 codeGen.addCommand(`await page.keyboard.press('Enter');`);
             }
-        } catch(e) {
-            await page.keyboard.press('Enter');
-        }
+        } catch(e) { await page.keyboard.press('Enter'); }
         await sleep(3000);
 
         codeGen.addRawBlock("نظام التراجع الذكي في حال تم توجيه المتصفح لصفحة Apple بالخطأ", [
@@ -321,7 +314,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             else await page.keyboard.press('Enter');
             await sleep(3000);
         }
-        // ======================================================================
 
         codeGen.addStep("إدخال كلمة المرور");
         const passSelectors = 'input[type="password"], input[name="password"]';
@@ -375,7 +367,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         else await page.keyboard.press('Enter');
         await sleep(5000); 
 
-        // التفرقة الذكية بين Age و Birthday
         const nameInputNode = page.getByRole("textbox", { name: "Full name" }).first();
         if (await nameInputNode.isVisible({ timeout: 15000 }).catch(() => false)) {
             codeGen.addStep("تعبئة الاسم والتعرف الذكي على العمر أو تاريخ الميلاد");
@@ -418,22 +409,29 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             const bodyTxt = await page.innerText('body').catch(()=>"");
             
             // ======================================================================
-            // 🎯 التحديث V11: قناص نافذة (You're all set) المبكر
+            // ☢️ السلاح النووي V12: القضاء الفوري على نافذة You're all set بالحقن البرمجي
             // ======================================================================
-            try {
-                if (bodyTxt.includes("You're all set") || bodyTxt.includes("You’re all set") || bodyTxt.includes("ChatGPT can make mistakes")) {
-                    const exactContinue = page.getByRole('button', { name: 'Continue', exact: true }).last();
-                    if (await exactContinue.isVisible({timeout: 1000}).catch(()=>false)) {
-                        await exactContinue.click({ force: true });
-                        await sleep(1500);
-                    } else {
-                        const anyContinue = page.locator('button:has-text("Continue")').last();
-                        if (await anyContinue.isVisible({timeout: 1000}).catch(()=>false)) await anyContinue.click({ force: true });
-                        else await page.keyboard.press('Enter');
-                        await sleep(1500);
-                    }
-                }
-            } catch(e) {}
+            if (bodyTxt.includes("You're all set") || bodyTxt.includes("You’re all set") || bodyTxt.includes("ChatGPT can make mistakes")) {
+                await updateStatus("تم رصد شاشة You're all set.. جاري تدميرها برمجياً!");
+                
+                // الحقن المباشر في كود المتصفح لإجبار أي عنصر يحمل هذه الكلمات على الضغط
+                await page.evaluate(() => {
+                    const sweepTexts = ['continue', 'okay', 'next', 'done', 'skip', 'skip tour'];
+                    document.querySelectorAll('button, a, [role="button"], span, div').forEach(b => {
+                        const text = (b.innerText || b.textContent || '').trim().toLowerCase();
+                        if (sweepTexts.includes(text)) {
+                            b.click();
+                        }
+                    });
+                }).catch(()=>{});
+                
+                await sleep(1000);
+                // محاولات احتياطية في حال نجا الزر
+                try { await page.getByRole('button', { name: 'Continue', exact: true }).last().click({ force: true, timeout: 1000 }); } catch(e) {}
+                await page.keyboard.press('Enter').catch(()=>{});
+                await page.keyboard.press('Escape').catch(()=>{});
+                await sleep(1500);
+            }
             // ======================================================================
             
             const hasNewUI = bodyTxt.includes('Where should we begin?') || bodyTxt.includes('Claim offer') || bodyTxt.includes('New chat');
@@ -462,46 +460,43 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
              await sleep(5000); 
 
              // ======================================================================
-             // 💣 كاسحة النوافذ المدمرة V11 (باستخدام Exact Match لزر Continue)
+             // 💣 كاسحة النوافذ المدمرة V12 (تعمل بـ page.evaluate للتخطي الإجباري)
              // ======================================================================
-             await updateStatus("مسح النوافذ الترحيبية الدقيقة التي تحجب إعدادات الأمان...");
+             await updateStatus("مسح النوافذ الإعلانية لتنظيف طريق الماوس...");
              
-             codeGen.addStep("إغلاق النوافذ الترحيبية (You're all set / Skip Tour / Continue) بدقة عالية");
-             codeGen.addRawBlock("مسح النوافذ الترحيبية التي تحجب الشاشة (Exact Match)", [
+             codeGen.addStep("إغلاق النوافذ الترحيبية (Skip Tour / Continue) بحقن كود DOM");
+             codeGen.addRawBlock("مسح النوافذ الإعلانية إجبارياً عبر الجافاسكربت", [
                  `await page.keyboard.press('Escape');`,
                  `await page.waitForTimeout(1000);`,
-                 `const exactTexts = ['Continue', 'Okay', 'Next', 'Done', 'Skip', 'Skip Tour'];`,
-                 `for (let i = 0; i < 3; i++) {`,
-                 `    for (const pText of exactTexts) {`,
-                 `        try {`,
-                 `            const btn = page.getByRole('button', { name: pText, exact: true }).last();`,
-                 `            if (await btn.isVisible({ timeout: 500 })) { await btn.click({ force: true }); await page.waitForTimeout(1000); }`,
-                 `        } catch (e) {}`,
-                 `    }`,
-                 `}`
+                 `await page.evaluate(() => {`,
+                 `    const sweepTexts = ['continue', 'okay', 'next', 'done', 'skip', 'skip tour'];`,
+                 `    document.querySelectorAll('button, a, [role="button"], span, div').forEach(b => {`,
+                 `        const text = (b.innerText || b.textContent || '').trim().toLowerCase();`,
+                 `        if (sweepTexts.includes(text)) { b.click(); }`,
+                 `    });`,
+                 `}).catch(()=>{});`,
+                 `try { await page.getByRole('button', { name: 'Continue', exact: true }).last().click({ force: true, timeout: 500 }); } catch(e) {}`,
+                 `await page.keyboard.press('Enter');`
              ]);
              
              await page.keyboard.press('Escape').catch(()=>{});
              await sleep(1000);
 
-             const popupTexts = ['Continue', 'Okay', 'Next', 'Done', 'Skip', 'Skip Tour'];
-             for (let i = 0; i < 3; i++) {
-                 for (const pText of popupTexts) {
-                     try {
-                         const btn = page.getByRole('button', { name: pText, exact: true }).last();
-                         if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
-                             await btn.click({ force: true });
-                             await sleep(1000);
-                         } else {
-                             const fallback = page.locator(`button:text-is("${pText}"), [role="button"]:text-is("${pText}")`).last();
-                             if (await fallback.isVisible({ timeout: 200 }).catch(()=>false)) {
-                                 await fallback.click({ force: true });
-                                 await sleep(1000);
-                             }
-                         }
-                     } catch (e) {}
-                 }
-             }
+             // التدمير البرمجي المباشر لأي نافذة مزعجة عبر DOM
+             await page.evaluate(() => {
+                 const sweepTexts = ['continue', 'okay', 'next', 'done', 'skip', 'skip tour'];
+                 document.querySelectorAll('button, a, [role="button"], span, div').forEach(b => {
+                     const text = (b.innerText || b.textContent || '').trim().toLowerCase();
+                     if (sweepTexts.includes(text)) {
+                         b.click();
+                     }
+                 });
+             }).catch(()=>{});
+             
+             try { await page.getByRole('button', { name: 'Continue', exact: true }).last().click({ force: true, timeout: 500 }); } catch(e) {}
+             await page.keyboard.press('Enter').catch(()=>{});
+             
+             await sleep(1500);
 
              codeGen.addRawBlock("إعادة فتح نافذة الأمان في حال انغلقت بالخطأ أثناء المسح", [
                  `try {`,
@@ -820,4 +815,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل بكامل طاقته (درع آبل يعمل + قناص V11 لـ You're all set مُفعل)...");
+console.log("🤖 البوت يعمل بكامل طاقته (تم تفعيل الحقن البرمجي DOM JS ضد نافذة You're all set)...");
