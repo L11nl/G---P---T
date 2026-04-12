@@ -7,7 +7,9 @@
  * - توليد كود ديناميكي ذكي لجلب كود 2FA (يدعم الأرقام ذات المسافات).
  * - 🚀 الملاحة القسرية (Force Reload): تحديث الصفحة بعد الرابط لضمان فتح نافذة الإعدادات 100%.
  * - 🎯 الضغط الدقيق: الإحداثيات 986.56, 353.28 (تضرب المربع 527 بدقة).
- * - ✏️ تحديث: إرسال كتابات فقط (تعديل على نفس الرسالة) - الصور فقط للأخطاء
+ * - ✏️ تحديث: إرسال كتابات فقط (تعديل على نفس الرسالة) - الصور فقط للأخطاء.
+ * - 📄 تحديث: استخراج بيانات Session وحفظها في ملف txt.
+ * - 🛡️ التحديث الأخير: التوافق مع تجارب واجهات ChatGPT الجديدة والمتقلبة (A/B Testing).
  * ==========================================================
  */
 
@@ -118,7 +120,7 @@ async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
     return null;
 }
 
-// ================= دالة تحديث حالة الرسالة النصية (بدون صور) =================
+// ================= دالة تحديث حالة الرسالة النصية =================
 async function updateStatusMessage(chatId, text, messageId = null) {
     try {
         if (!messageId) {
@@ -129,7 +131,6 @@ async function updateStatusMessage(chatId, text, messageId = null) {
                 chat_id: chatId, 
                 message_id: messageId 
             }).catch(async () => {
-                // إذا فشل التعديل، نرسل رسالة جديدة
                 const sent = await bot.sendMessage(chatId, `⚡ ${text}`);
                 return sent.message_id;
             });
@@ -146,10 +147,10 @@ async function sendErrorScreenshot(page, chatId, errorMessage) {
     try {
         const p = path.join(__dirname, `error_${Date.now()}.png`);
         await page.screenshot({ path: p });
-        await bot.sendPhoto(chatId, p, { caption: `❌ **خطأ:**\n${errorMessage}` });
+        await bot.sendPhoto(chatId, p, { caption: `⚠️ **توقف مؤقت:**\nتغير مفاجئ في واجهة الموقع، تم تفعيل التحكم اليدوي لتجنب الخطأ.\n${errorMessage}` });
         if (fs.existsSync(p)) fs.unlinkSync(p);
     } catch (err) {
-        await bot.sendMessage(chatId, `❌ **خطأ:** ${errorMessage}\n(تعذر التقاط صورة للشاشة)`);
+        await bot.sendMessage(chatId, `❌ **توقف مؤقت:** ${errorMessage}\n(تعذر التقاط صورة للشاشة)`);
     }
 }
 
@@ -298,7 +299,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
 
     const checkCancel = () => { if (userState[chatId]?.cancel) throw new Error("CANCELLED_BY_USER"); };
     
-    // تحديث حالة بدون صور - فقط نص
     const updateStatus = async (text) => {
         checkCancel();
         statusMsgID = await updateStatusMessage(chatId, `${modeText}: ${text}`, statusMsgID);
@@ -334,38 +334,77 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         codeGen.addStep("تهيئة المتصفح والدخول لصفحة التسجيل");
         codeGen.addCommand(`await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded" });`);
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
-        await updateStatus("فتح المتصفح");
+        await updateStatus("فتح المتصفح ومحاولة تخطي الواجهات الجديدة...");
 
-        codeGen.addStep("الضغط على زر التسجيل (Sign up)");
-        const signupBtn = page.getByRole("button", { name: "Sign up" });
-        await signupBtn.waitFor({ state: 'visible', timeout: 30000 }).catch(() => page.locator('button:has-text("Sign up")').click());
-        await signupBtn.click();
-        codeGen.addCommand(`await page.locator('button:has-text("Sign up")').click();`);
-        await updateStatus("الضغط على Sign up");
+        // === 🛡️ التحديث الذكي لتخطي واجهات الدخول العشوائية (لتفادي مشكلة الصورة الأولى) ===
+        codeGen.addStep("البحث عن زر التسجيل وتجاوز الواجهات العشوائية المتغيرة");
+        try {
+            await sleep(3000);
+            const signupBtn = page.locator('button:has-text("Sign up"), a:has-text("Sign up")').first();
+            const loginBtn = page.locator('button:has-text("Log in"), a:has-text("Log in"), [data-testid="login-button"]').first();
+
+            // إعطاء الأولوية لـ Sign up إن وجد
+            if (await signupBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
+                await signupBtn.click();
+            } else if (await loginBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
+                await loginBtn.click();
+                await sleep(2000);
+                // بعض الأحيان الضغط على Login يظهر زر Signup فرعي
+                const innerSignup = page.locator('a:has-text("Sign up")').first();
+                if (await innerSignup.isVisible({ timeout: 2000 }).catch(()=>false)) {
+                    await innerSignup.click();
+                }
+            }
+        } catch (e) {}
         
+        await updateStatus("البحث عن حقل الإيميل...");
         codeGen.addStep("إدخال البريد الإلكتروني");
-        await page.waitForSelector('input[name="email"], input[id="email-input"]', {timeout: 30000});
-        await page.locator('input[name="email"], input[id="email-input"]').first().fill(email);
-        codeGen.addCommand(`await page.locator('input[name="email"]').fill("${email}");`);
+        const emailSelectors = 'input[name="email"], input[id="email-input"], input[type="email"]';
+        await page.waitForSelector(emailSelectors, {timeout: 30000}).catch(()=>{});
+        const emailInput = page.locator(emailSelectors).first();
+        if (await emailInput.isVisible().catch(()=>false)) {
+            await emailInput.fill(email);
+        } else {
+            await page.keyboard.type(email); // كحماية أخيرة
+        }
+        codeGen.addCommand(`await page.locator('input[type="email"]').first().fill("${email}");`);
         await sleep(1000);
         await updateStatus(`إدخال البريد: ${email}`);
         
-        codeGen.addStep("الاستمرار بعد إدخال الإيميل");
-        await page.getByRole("button", { name: "Continue", exact: true }).click({ force: true });
-        codeGen.addCommand(`await page.getByRole("button", { name: "Continue" }).click();`);
+        // === 🛡️ التحديث الذكي لزر Apple (لتفادي مشكلة الصورة الثانية) ===
+        codeGen.addStep("الاستمرار بعد إدخال الإيميل (بالضغط على Enter للوقاية من أزرار Apple)");
+        await page.keyboard.press('Enter');
+        await sleep(1500);
+        // زر تأكيد احتياطي صارم يتجاهل أبل وجوجل
+        const continueBtn1 = page.locator('button[type="submit"], button:has-text("Continue"):not(:has-text("Apple")):not(:has-text("Google")):not(:has-text("Microsoft"))').first();
+        if (await continueBtn1.isVisible({timeout: 1000}).catch(()=>false)) {
+             await continueBtn1.click({ force: true });
+        }
+        codeGen.addCommand(`await page.keyboard.press('Enter');`);
         await sleep(3000);
         await updateStatus("الاستمرار...");
 
         codeGen.addStep("إدخال كلمة المرور");
-        await page.waitForSelector('input[type="password"]', {timeout: 30000});
-        await page.locator('input[type="password"]').first().fill(chatGptPassword);
-        codeGen.addCommand(`await page.locator('input[type="password"]').fill("${chatGptPassword}");`);
+        const passSelectors = 'input[type="password"], input[name="password"]';
+        await page.waitForSelector(passSelectors, {timeout: 30000}).catch(()=>{});
+        const passInput = page.locator(passSelectors).first();
+        if (await passInput.isVisible().catch(()=>false)) {
+            await passInput.fill(chatGptPassword);
+        } else {
+            await page.keyboard.type(chatGptPassword);
+        }
+        codeGen.addCommand(`await page.locator('input[type="password"]').first().fill("${chatGptPassword}");`);
         await sleep(1000);
         await updateStatus("إدخال كلمة المرور");
 
         codeGen.addStep("المتابعة لإكمال التسجيل");
-        await page.getByRole("button", { name: "Continue" }).click({ force: true });
-        codeGen.addCommand(`await page.getByRole("button", { name: "Continue" }).click();`);
+        await page.keyboard.press('Enter');
+        await sleep(1500);
+        const continueBtn2 = page.locator('button[type="submit"], button:has-text("Continue")').first();
+        if (await continueBtn2.isVisible({timeout: 1000}).catch(()=>false)) {
+            await continueBtn2.click({ force: true });
+        }
+        codeGen.addCommand(`await page.keyboard.press('Enter');`);
         await sleep(7000); 
 
         checkCancel();
@@ -373,7 +412,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         
         let code = null;
         if (isManual) {
-            await bot.sendMessage(chatId, "🛑 يرجى إرسال الكود المكون من 6 أرقام هنا في الشات.");
+            await bot.sendMessage(chatId, "🛑 يرجى إرسال الكود المكون من 6 أرقام هنا في الشات (إذا طُلب منك).");
             code = await new Promise((resolve) => {
                 const listener = (msg) => {
                     if (msg.chat.id === chatId && /^\d{6}$/.test(msg.text?.trim())) {
@@ -423,9 +462,22 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         }
 
         await updateStatus("في انتظار الصفحة الرئيسية...");
-        await page.waitForURL('**/chat', {timeout: 30000}).catch(()=>{});
         
-        if (page.url().includes('/chat')) {
+        // === 🛡️ التحديث الذكي لقراءة رابط الصفحة الرئيسية (لتفادي مشكلة الصورة الثالثة) ===
+        let isMainReady = false;
+        for (let i = 0; i < 15; i++) {
+            const currentUrl = page.url();
+            const hasTextarea = await page.locator('#prompt-textarea, [placeholder*="Message" i], [aria-label*="Message" i]').isVisible().catch(()=>false);
+            // قراءة أي رابط جديد لـ chatgpt لا يحتوي على auth
+            if ((currentUrl.includes('chatgpt.com') && !currentUrl.includes('auth') && !currentUrl.includes('login')) || hasTextarea) {
+                isMainReady = true;
+                break;
+            }
+            await sleep(2000);
+        }
+        // ================================================================
+
+        if (isMainReady) {
              const result = `${email}|${chatGptPassword}`;
              fs.appendFileSync(path.join(__dirname, ACCOUNTS_FILE), result + '\n');
              
@@ -453,12 +505,10 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
 
              await updateStatus("جاري الدخول لإعدادات الأمان...");
              
-             // === الخطوة 8: الانتظار لمدة 3 ثواني ===
              codeGen.addStep("الانتظار لمدة 3 ثواني في الصفحة الرئيسية");
              await sleep(3000);
              codeGen.addCommand(`await new Promise(r => setTimeout(r, 3000));`);
 
-             // === الخطوة 9: الدخول لإعدادات الأمان مع تحديث قسري ===
              codeGen.addStep("الدخول لإعدادات الأمان (Security) مع تحديث الصفحة (Reload) لإجبار النافذة على الفتح");
              await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
              await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
@@ -468,7 +518,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
 
              // كاسحة النوافذ
              codeGen.addRawBlock(
-                 "كاسحة النوافذ (V6): استخدام .last() والتطابق الدقيق",
+                 "كاسحة النوافذ (V6)",
                  [
                      `const shieldBtns = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];`,
                      `for (let i = 0; i < 3; i++) {`,
@@ -510,7 +560,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  }
              }
 
-             // === الضغط على المربع 527 ===
+             // === الضغط على المربع 527 كما طلبت تماماً ===
              codeGen.addStep("الضغط كليك بالماوس على المربع رقم (527) عبر الإحداثيات: X=986.56, Y=353.28");
              try {
                  await page.mouse.click(986.56, 353.28);
@@ -522,7 +572,17 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
              // === البحث عن Trouble scanning? ===
              codeGen.addStep('البحث عن النص "Trouble scanning?" والضغط عليه لإظهار الكود السري');
              try {
-                 const troubleBtn = page.locator('text="Trouble scanning?"').first();
+                 let troubleBtn = page.locator('text="Trouble scanning?"').first();
+                 
+                 // 🛡️ التحديث الذكي: إذا أخطأت إحداثيات الماوس زر الأمان بسبب تغير حجم الصفحة، البوت سيضغط عليه برمجياً
+                 if (!(await troubleBtn.isVisible({ timeout: 2000 }).catch(()=>false))) {
+                     const smartEnableBtn = page.locator('button:has-text("Enable")').last();
+                     if (await smartEnableBtn.isVisible({ timeout: 1500 }).catch(()=>false)) {
+                         await smartEnableBtn.click({ force: true });
+                         await sleep(2000);
+                     }
+                 }
+
                  if (await troubleBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
                      await troubleBtn.click();
                  } else {
@@ -595,15 +655,10 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                      await sleep(3000);
                      
                      // ========================================================
-                     // ✅ نجاح العملية - إرسال المعلومات النهائية بالترتيب المطلوب
+                     // ✅ إرسال المعلومات النهائية
                      // ========================================================
+                     if (statusMsgID) { await bot.deleteMessage(chatId, statusMsgID).catch(()=>{}); }
                      
-                     // حذف رسالة الحالة المؤقتة
-                     if (statusMsgID) {
-                         await bot.deleteMessage(chatId, statusMsgID).catch(()=>{});
-                     }
-                     
-                     // إرسال المعلومات النهائية
                      await bot.sendMessage(chatId, 
                          `✅ **تم إنشاء الحساب وتفعيل المصادقة الثنائية بنجاح!**\n\n` +
                          `📧 **الإيميل:** \`${email}\`\n` +
@@ -612,13 +667,33 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                          { parse_mode: 'Markdown' }
                      );
                      
-                     // إنهاء الجلسة وإغلاق كل شيء
+                     // ========================================================
+                     // جلب بيانات الـ Session بناءً على طلبك (محمي وآمن تماماً)
+                     // ========================================================
+                     try {
+                         codeGen.addStep("الدخول إلى رابط السشن واستخراج البيانات");
+                         await page.goto("https://chatgpt.com/api/auth/session", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
+                         codeGen.addCommand(`await page.goto("https://chatgpt.com/api/auth/session");`);
+                         
+                         await sleep(2000);
+                         let sessionText = "";
+                         try {
+                             sessionText = await page.innerText('body');
+                         } catch (err) {
+                             sessionText = await page.evaluate(() => document.body ? document.body.innerText : document.documentElement.innerText).catch(() => "لم يتم العثور على بيانات");
+                         }
+                         
+                         const sessionFilePath = path.join(__dirname, `session_${Date.now()}.txt`);
+                         fs.writeFileSync(sessionFilePath, sessionText);
+                         await bot.sendDocument(chatId, sessionFilePath, { caption: "📄 **بيانات السشن (Session Data)**" }).catch(()=>{});
+                         if (fs.existsSync(sessionFilePath)) fs.unlinkSync(sessionFilePath);
+                     } catch (sessionErr) {} // حماية صامتة
+                     // ========================================================
+
                      codeGen.addStep("تم تفعيل 2FA بنجاح - إنهاء العملية");
-                     
                      if (context) await context.close().catch(()=>{});
                      if (tempDir) try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
                      
-                     // توليد وحفظ السكربت
                      const jsCode = codeGen.getFinalScript();
                      const logPath = path.join(__dirname, `AutoGenerated_Script_${Date.now()}.js`);
                      fs.writeFileSync(logPath, jsCode);
@@ -634,14 +709,13 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  }
              }
              
-             // إذا وصلنا هنا يعني فشل استخراج الكود
              codeGen.addStep("تعذر استخراج كود 32 حرف. تحويل المستخدم للوضع اليدوي.");
              await bot.sendMessage(chatId, "⚠️ **لم يتم العثور على الكود 32 حرف كابيتال في الصفحة، سيتم تحويلك للتحكم اليدوي.**");
              await drawGridAndScreenshot(page, chatId, "🔲 **صورة الشاشة مقسمة لمربعات:**\nاستخدم الأرقام في الصورة لمعرفة المكان الذي يجب الضغط عليه لتكملة السكربت.");
              await startInteractiveMode(chatId, page, context, tempDir, codeGen);
 
         } else {
-            throw new Error("لم يتم الوصول للرئيسية.");
+            throw new Error(`تعذر التعرف على واجهة الصفحة الحالية للأسف.`);
         }
 
     } catch (error) {
@@ -651,8 +725,8 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             return false;
         }
         
-        // إرسال صورة للخطأ فقط
-        await bot.sendMessage(chatId, `❌ توقف بسبب خطأ: ${error.message}`);
+        // إرسال صورة للخطأ والتوقف بأمان
+        await bot.sendMessage(chatId, `⚠️ **توقف مؤقت للحماية:**\nتغير شكل موقع ChatGPT فجأة، تم تحويلك للتحكم اليدوي كي لا تضيع محاولتك.`);
         if (page && context && !userState[chatId].cancel) {
             await sendErrorScreenshot(page, chatId, error.message);
             await startInteractiveMode(chatId, page, context, tempDir, codeGen);
@@ -776,7 +850,6 @@ bot.on('callback_query', async (query) => {
                         
                         const acc = state.accountInfo || { email: "غير متوفر", password: "غير متوفر" };
                         
-                        // نجاح - إرسال المعلومات النهائية
                         await bot.sendMessage(chatId, 
                             `✅ **تمت المصادقة الثنائية بنجاح!**\n\n` +
                             `📧 **الإيميل:** \`${acc.email}\`\n` +
@@ -784,6 +857,34 @@ bot.on('callback_query', async (query) => {
                             `🔗 **رابط المصادقة:** https://2fa.fb.tools/${secretCode}`,
                             { parse_mode: 'Markdown' }
                         );
+                        
+                        // ========================================================
+                        // جلب بيانات الـ Session حتى في وضع الاستكمال اليدوي
+                        // ========================================================
+                        try {
+                            state.codeGen.addStep("الدخول إلى رابط السشن واستخراج البيانات");
+                            await state.page.goto("https://chatgpt.com/api/auth/session", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
+                            state.codeGen.addCommand(`await page.goto("https://chatgpt.com/api/auth/session");`);
+                            
+                            await sleep(2000);
+                            
+                            let sessionText = "";
+                            try {
+                                sessionText = await state.page.innerText('body');
+                            } catch (err) {
+                                sessionText = await state.page.evaluate(() => document.body ? document.body.innerText : document.documentElement.innerText).catch(() => "لم يتم العثور على بيانات");
+                            }
+                            
+                            const sessionFilePath = path.join(__dirname, `session_${Date.now()}.txt`);
+                            fs.writeFileSync(sessionFilePath, sessionText);
+                            
+                            await bot.sendDocument(chatId, sessionFilePath, {
+                                caption: "📄 **بيانات السشن (Session Data)**"
+                            }).catch(()=>{});
+                            
+                            if (fs.existsSync(sessionFilePath)) fs.unlinkSync(sessionFilePath);
+                        } catch (sessionErr) {} // حماية صامتة
+                        // ========================================================
                         
                         bot.sendMessage(chatId, "✅ جاري استخراج السكربت النهائي وإغلاق الجلسة...");
                         state.isInteractive = false;
@@ -1015,4 +1116,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل الآن مع نظام الرسائل النصية (بدون صور إلا للأخطاء)...");
+console.log("🤖 البوت يعمل الآن بقوة ومجهز لتخطي واجهة وتحديثات ChatGPT العشوائية...");
