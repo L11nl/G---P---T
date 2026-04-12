@@ -5,8 +5,8 @@
  * - أداة توليد أكواد برمجية دقيقة (Playwright Code Builder).
  * - ترقيم تلقائي لجميع خطوات السكربت (الخطوة 1، الخطوة 2...).
  * - توليد كود ديناميكي ذكي لجلب كود 2FA (يدعم الأرقام ذات المسافات).
- * - نظام تفاعلي كامل وزر "البحث عن الرابط".
- * - 🛡️ درع حماية شامل (V3) يتخطى نافذة (You're all set / Continue) وجميع النوافذ المتتالية بمسح ثلاثي.
+ * - 🛡️ درع الحماية الشامل (V5): تمت إضافة كاسحة للنوافذ الجديدة (Okay, let's go) قبل الإعدادات.
+ * - 🎯 الضغط الدقيق: الإحداثيات 986.56, 353.28 تضرب بدقة المربع رقم 527.
  * ==========================================================
  */
 
@@ -403,11 +403,11 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
              userState[chatId].accountInfo = { email: email, password: chatGptPassword };
 
              // --- تنظيف مبدئي مخفي في الصفحة الرئيسية ---
-             const earlySkipBtns = ["Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
+             const earlySkipBtns = ["Okay, let's go", "Okay, let’s go", "Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
              for (let i = 0; i < 2; i++) {
                  for (const btnText of earlySkipBtns) {
                      try {
-                         const btn = page.locator(`text="${btnText}"`).first();
+                         const btn = page.locator(`button:has-text("${btnText}"), text="${btnText}"`).first();
                          if (await btn.isVisible({ timeout: 1000 }).catch(()=>false)) {
                              await btn.click({ force: true });
                              await sleep(1000);
@@ -428,31 +428,30 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
                  await sleep(4000);
 
-                 // 🛡️ درع الحماية الشامل V3 في الوضع اليدوي قبل أخذ الصورة
+                 // 🛡️ درع الحماية الشامل V5 في الوضع اليدوي (بدون استخدام Escape لأنه يغلق الإعدادات)
                  codeGen.addRawBlock(
-                     "تأكيد إغلاق أي نوافذ ترحيبية متتالية تحجب إعدادات الأمان (مثل You're all set / Continue)",
+                     "تأكيد إغلاق أي نوافذ ترحيبية متتالية تحجب إعدادات الأمان (مثل Okay, let's go)",
                      [
-                         `const shieldBtns = ["Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];`,
+                         `const shieldBtns = ["Okay, let's go", "Okay, let’s go", "Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];`,
                          `for (let i = 0; i < 3; i++) {`,
                          `    for (const bText of shieldBtns) {`,
                          `        try {`,
-                         `            const btn = page.locator(\`text="\${bText}"\`).first();`,
+                         `            const btn = page.locator(\`button:has-text("\${bText}"), text="\${bText}"\`).first();`,
                          `            if (await btn.isVisible({ timeout: 1000 })) {`,
                          `                await btn.click({ force: true });`,
                          `                await page.waitForTimeout(1000);`,
                          `            }`,
                          `        } catch (e) {}`,
                          `    }`,
-                         `}`,
-                         `await page.keyboard.press('Escape');`
+                         `}`
                      ]
                  );
                  
-                 const shieldBtnsManual = ["Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
+                 const shieldBtnsManual = ["Okay, let's go", "Okay, let’s go", "Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
                  for (let i = 0; i < 3; i++) {
                      for (const bText of shieldBtnsManual) {
                          try {
-                             const btn = page.locator(`text="${bText}"`).first();
+                             const btn = page.locator(`button:has-text("${bText}"), text="${bText}"`).first();
                              if (await btn.isVisible({ timeout: 1000 }).catch(()=>false)) {
                                  await btn.click({ force: true });
                                  await sleep(1000);
@@ -460,7 +459,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                          } catch (e) {}
                      }
                  }
-                 await page.keyboard.press('Escape');
                  await sleep(1000);
 
                  currentPhotoId = await sendStepPhoto(page, chatId, "🛑 **نحن الآن في صفحة الأمان (Security).**\nاستخدم الماوس لتحديد الزر الذي يظهر الكود السري (Trouble scanning).\n\nبمجرد أن يظهر الكود، اضغط **(🔐 المتابعة الى AF2)** من القائمة ليكمل البوت العملية تلقائياً ويستخرج السكربت.", currentPhotoId);
@@ -469,47 +467,40 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  return true;
 
              } else {
-                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **نجاح (تلقائي):**\n\`${result}\`\n\nيتم الآن الانتقال لتفعيل المصادقة الثنائية (2FA) عبر المسار الجديد والمختصر...`, currentPhotoId);
+                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **نجاح (تلقائي):**\n\`${result}\`\n\nيتم الآن تدمير النوافذ الترحيبية والتوجه لصفحة الأمان للضغط على المربع 527...`, currentPhotoId);
                  
-                 // === الخطوة 9: الانتظار لمدة 5 ثواني قبل التوجه لإعدادات الأمان ===
-                 codeGen.addStep("الانتظار لمدة 5 ثواني قبل التوجه لإعدادات الأمان");
+                 // === الخطوة 8: الانتظار لمدة 5 ثواني في الصفحة الرئيسية ===
+                 codeGen.addStep("الانتظار لمدة 5 ثواني لتستقر الصفحة الرئيسية وتظهر النوافذ إن وجدت");
                  await sleep(5000);
                  codeGen.addCommand(`await new Promise(r => setTimeout(r, 5000));`);
 
-                 // === الخطوة 10: الدخول لإعدادات الأمان (Security) ===
-                 codeGen.addStep("الدخول لإعدادات الأمان (Security)");
-                 await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
-                 codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
-                 await sleep(4000);
-
                  // 🛡️ ========================================================
-                 // 💡 درع الحماية الشامل (Shield V3): مسح متعدد لتدمير أي نوافذ متتالية
-                 // سيضرب (Continue) و (Skip Tour) وأي نوافذ متأخرة قد تظهر!
+                 // 💡 درع الحماية الشامل (Shield V5): يعمل الآن في الصفحة الرئيسية
+                 // ليمسح (Ask anything) و (ChatGPT Tips) بالكامل قبل الدخول للإعدادات
                  // ========================================================
                  codeGen.addRawBlock(
-                     "تأكيد إغلاق أي نوافذ ترحيبية متتالية تحجب إعدادات الأمان (مثل You're all set / Continue)",
+                     "دالة ذكية لتخطي جميع النوافذ الترحيبية (Onboarding) المتتالية قبل فتح الإعدادات",
                      [
-                         `const shieldBtns = ["Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];`,
+                         `const shieldBtns = ["Okay, let's go", "Okay, let’s go", "Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];`,
                          `for (let i = 0; i < 3; i++) {`,
                          `    for (const bText of shieldBtns) {`,
                          `        try {`,
-                         `            const btn = page.locator(\`text="\${bText}"\`).first();`,
+                         `            const btn = page.locator(\`button:has-text("\${bText}"), text="\${bText}"\`).first();`,
                          `            if (await btn.isVisible({ timeout: 1000 })) {`,
                          `                await btn.click({ force: true });`,
                          `                await page.waitForTimeout(1000);`,
                          `            }`,
                          `        } catch (e) {}`,
                          `    }`,
-                         `}`,
-                         `await page.keyboard.press('Escape');`
+                         `}`
                      ]
                  );
 
-                 const shieldBtnsAuto = ["Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
+                 const shieldBtnsAuto = ["Okay, let's go", "Okay, let’s go", "Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
                  for (let i = 0; i < 3; i++) {
                      for (const bText of shieldBtnsAuto) {
                          try {
-                             const btn = page.locator(`text="${bText}"`).first();
+                             const btn = page.locator(`button:has-text("${bText}"), text="${bText}"`).first();
                              if (await btn.isVisible({ timeout: 1000 }).catch(()=>false)) {
                                  await btn.click({ force: true });
                                  await sleep(1000);
@@ -517,11 +508,15 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                          } catch (e) {}
                      }
                  }
-                 await page.keyboard.press('Escape');
-                 await sleep(1000); // استراحة لتنظيف الشاشة قبل حركة الماوس
 
-                 // === الخطوة 11: الضغط كليك بالماوس على الإحداثيات: X=986.56, Y=353.28 ===
-                 codeGen.addStep("الضغط كليك بالماوس على الإحداثيات: X=986.56, Y=353.28");
+                 // === الخطوة 10: الدخول لإعدادات الأمان (Security) ===
+                 codeGen.addStep("الدخول لإعدادات الأمان (Security)");
+                 await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
+                 codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
+                 await sleep(4000);
+
+                 // === الخطوة 11: الضغط كليك بالماوس على المربع (527) عبر الإحداثيات: X=986.56, Y=353.28 ===
+                 codeGen.addStep("الضغط كليك بالماوس على المربع رقم (527) عبر الإحداثيات: X=986.56, Y=353.28");
                  try {
                      await page.mouse.click(986.56, 353.28);
                  } catch(e) {}
@@ -529,7 +524,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  await sleep(3000);
 
                  // === الخطوة 12: البحث عن النص "Trouble scanning?" والضغط عليه ===
-                 codeGen.addStep('البحث عن النص "Trouble scanning?" والضغط عليه');
+                 codeGen.addStep('البحث عن النص "Trouble scanning?" والضغط عليه لإظهار الكود السري');
                  try {
                      const troubleBtn = page.locator('text="Trouble scanning?"').first();
                      if (await troubleBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
@@ -602,7 +597,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                          
                          await sleep(3000);
                          
-                         currentPhotoId = await sendStepPhoto(page, chatId, "✅ تمت المصادقة الثنائية (2FA) تلقائياً بنجاح وفق مسار السكربت المختصر والدقيق!", currentPhotoId);
+                         currentPhotoId = await sendStepPhoto(page, chatId, "✅ تمت المصادقة الثنائية (2FA) تلقائياً بنجاح عبر المربع 527!", currentPhotoId);
                          codeGen.addStep("تم تفعيل 2FA بنجاح. الدخول في وضع الاستعداد بانتظار أوامرك.");
                          await startInteractiveMode(chatId, page, context, tempDir, codeGen, currentPhotoId);
                          return true;
@@ -983,4 +978,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل الآن (مع الدرع الشامل V3 لتحطيم نوافذ Continue و Skip المتتالية)...");
+console.log("🤖 البوت يعمل الآن (مع الدرع المطور V5 لإنهاء نوافذ Okay let's go والضغط على المربع 527 بدقة)...");
