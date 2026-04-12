@@ -6,7 +6,7 @@
  * - ترقيم تلقائي لجميع خطوات السكربت (الخطوة 1، الخطوة 2...).
  * - توليد كود ديناميكي ذكي لجلب كود 2FA (يدعم الأرقام ذات المسافات).
  * - نظام تفاعلي كامل وزر "البحث عن الرابط".
- * - 🛡️ مدمج به درع حماية لتخطي نافذة (Ask anything / Skip Tour) قبل ضغط الماوس لمنع التوقف.
+ * - 🛡️ درع حماية شامل (V3) يتخطى نافذة (You're all set / Continue) وجميع النوافذ المتتالية بمسح ثلاثي.
  * ==========================================================
  */
 
@@ -135,6 +135,7 @@ const TOTAL_CELLS = GRID_COLS * GRID_ROWS;
 
 async function drawGridAndScreenshot(page, chatId, caption) {
     console.log('\n--- 🟡 بدء رسم الشبكة الشفافة المصغرة جداً (1125 مربع) ---');
+
     const p = path.join(__dirname, `grid_${Date.now()}.png`);
 
     try {
@@ -401,28 +402,13 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
              
              userState[chatId].accountInfo = { email: email, password: chatGptPassword };
 
-             // --- تنظيف التكرار في السكربت المستخرج ---
-             codeGen.addRawBlock(
-                 "دالة ذكية لتخطي النوافذ الترحيبية (إن وجدت) دون تكرار الأكواد",
-                 [
-                     `const skipBtns = ["Skip", "Skip Tour", "Continue", "Okay", "Done"];`,
-                     `for (let i = 0; i < 2; i++) {`,
-                     `    for (const btnText of skipBtns) {`,
-                     `        try {`,
-                     `            const btn = page.locator(\`text="\${btnText}"\`).first();`,
-                     `            if (await btn.isVisible({ timeout: 1000 })) await btn.click({ force: true });`,
-                     `        } catch (e) {}`,
-                     `    }`,
-                     `}`
-                 ]
-             );
-             
-             const skipSequence = ["Skip", "Skip Tour", "Continue", "Okay", "Done"];
+             // --- تنظيف مبدئي مخفي في الصفحة الرئيسية ---
+             const earlySkipBtns = ["Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
              for (let i = 0; i < 2; i++) {
-                 for (const btnText of skipSequence) {
+                 for (const btnText of earlySkipBtns) {
                      try {
                          const btn = page.locator(`text="${btnText}"`).first();
-                         if (await btn.isVisible({ timeout: 1500 })) {
+                         if (await btn.isVisible({ timeout: 1000 }).catch(()=>false)) {
                              await btn.click({ force: true });
                              await sleep(1000);
                          }
@@ -442,26 +428,40 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
                  await sleep(4000);
 
-                 // 🛡️ درع الحماية في الوضع اليدوي قبل أخذ الصورة
+                 // 🛡️ درع الحماية الشامل V3 في الوضع اليدوي قبل أخذ الصورة
                  codeGen.addRawBlock(
-                     "تأكيد إغلاق أي نافذة ترحيبية متأخرة تحجب إعدادات الأمان",
+                     "تأكيد إغلاق أي نوافذ ترحيبية متتالية تحجب إعدادات الأمان (مثل You're all set / Continue)",
                      [
-                         `try {`,
-                         `    const skipTourBtn = page.locator('text="Skip Tour"').first();`,
-                         `    if (await skipTourBtn.isVisible({ timeout: 2000 })) await skipTourBtn.click({ force: true });`,
-                         `} catch (e) {}`,
-                         `await page.keyboard.press('Escape'); // إجراء احتياطي`
+                         `const shieldBtns = ["Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];`,
+                         `for (let i = 0; i < 3; i++) {`,
+                         `    for (const bText of shieldBtns) {`,
+                         `        try {`,
+                         `            const btn = page.locator(\`text="\${bText}"\`).first();`,
+                         `            if (await btn.isVisible({ timeout: 1000 })) {`,
+                         `                await btn.click({ force: true });`,
+                         `                await page.waitForTimeout(1000);`,
+                         `            }`,
+                         `        } catch (e) {}`,
+                         `    }`,
+                         `}`,
+                         `await page.keyboard.press('Escape');`
                      ]
                  );
-                 try {
-                     const skipTourBtn = page.locator('text="Skip Tour"').first();
-                     if (await skipTourBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
-                         await skipTourBtn.click({ force: true });
-                         await sleep(1000);
+                 
+                 const shieldBtnsManual = ["Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
+                 for (let i = 0; i < 3; i++) {
+                     for (const bText of shieldBtnsManual) {
+                         try {
+                             const btn = page.locator(`text="${bText}"`).first();
+                             if (await btn.isVisible({ timeout: 1000 }).catch(()=>false)) {
+                                 await btn.click({ force: true });
+                                 await sleep(1000);
+                             }
+                         } catch (e) {}
                      }
-                 } catch (e) {}
+                 }
                  await page.keyboard.press('Escape');
-                 await sleep(500);
+                 await sleep(1000);
 
                  currentPhotoId = await sendStepPhoto(page, chatId, "🛑 **نحن الآن في صفحة الأمان (Security).**\nاستخدم الماوس لتحديد الزر الذي يظهر الكود السري (Trouble scanning).\n\nبمجرد أن يظهر الكود، اضغط **(🔐 المتابعة الى AF2)** من القائمة ليكمل البوت العملية تلقائياً ويستخرج السكربت.", currentPhotoId);
                  
@@ -483,29 +483,42 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  await sleep(4000);
 
                  // 🛡️ ========================================================
-                 // 💡 درع الحماية (Shield): قنص نافذة (Ask anything / Skip Tour) المتأخرة
-                 // يتم إغلاقها فور ظهورها في صفحة الأمان لكي لا تحجب الماوس
+                 // 💡 درع الحماية الشامل (Shield V3): مسح متعدد لتدمير أي نوافذ متتالية
+                 // سيضرب (Continue) و (Skip Tour) وأي نوافذ متأخرة قد تظهر!
                  // ========================================================
                  codeGen.addRawBlock(
-                     "تأكيد إغلاق نافذة (Ask anything / Skip Tour) المتأخرة التي تحجب إعدادات الأمان",
+                     "تأكيد إغلاق أي نوافذ ترحيبية متتالية تحجب إعدادات الأمان (مثل You're all set / Continue)",
                      [
-                         `try {`,
-                         `    const skipTourBtn = page.locator('text="Skip Tour"').first();`,
-                         `    if (await skipTourBtn.isVisible({ timeout: 2000 })) await skipTourBtn.click({ force: true });`,
-                         `} catch (e) {}`,
-                         `await page.keyboard.press('Escape'); // إجراء احتياطي لقتل النوافذ العنيدة`
+                         `const shieldBtns = ["Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];`,
+                         `for (let i = 0; i < 3; i++) {`,
+                         `    for (const bText of shieldBtns) {`,
+                         `        try {`,
+                         `            const btn = page.locator(\`text="\${bText}"\`).first();`,
+                         `            if (await btn.isVisible({ timeout: 1000 })) {`,
+                         `                await btn.click({ force: true });`,
+                         `                await page.waitForTimeout(1000);`,
+                         `            }`,
+                         `        } catch (e) {}`,
+                         `    }`,
+                         `}`,
+                         `await page.keyboard.press('Escape');`
                      ]
                  );
 
-                 try {
-                     const skipTourBtn = page.locator('text="Skip Tour"').first();
-                     if (await skipTourBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
-                         await skipTourBtn.click({ force: true });
-                         await sleep(1000);
+                 const shieldBtnsAuto = ["Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
+                 for (let i = 0; i < 3; i++) {
+                     for (const bText of shieldBtnsAuto) {
+                         try {
+                             const btn = page.locator(`text="${bText}"`).first();
+                             if (await btn.isVisible({ timeout: 1000 }).catch(()=>false)) {
+                                 await btn.click({ force: true });
+                                 await sleep(1000);
+                             }
+                         } catch (e) {}
                      }
-                 } catch (e) {}
+                 }
                  await page.keyboard.press('Escape');
-                 await sleep(1000); // استراحة لتنظيف الشاشة قبل الماوس
+                 await sleep(1000); // استراحة لتنظيف الشاشة قبل حركة الماوس
 
                  // === الخطوة 11: الضغط كليك بالماوس على الإحداثيات: X=986.56, Y=353.28 ===
                  codeGen.addStep("الضغط كليك بالماوس على الإحداثيات: X=986.56, Y=353.28");
@@ -970,4 +983,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل الآن (مع درع حماية لتخطي نافذة Skip Tour وحل مشكلة التوقف)...");
+console.log("🤖 البوت يعمل الآن (مع الدرع الشامل V3 لتحطيم نوافذ Continue و Skip المتتالية)...");
