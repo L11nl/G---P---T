@@ -11,7 +11,6 @@
  * - 🛡️ التحديث 7: حل جذري لمشكلة Age/Birthday + القفز المباشر من واجهات Where should we begin.
  * - 💣 التحديث 8 (كاسحة النوافذ): مسح النوافذ الإعلانية (Skip Tour / Ask anything).
  * - 🎯 التحديث الأخير (القناص V9): التعرف الفوري على شاشة "You're all set" الإجبارية واختراقها بضغط زر Continue!
- * - 🚨 التحديث الأخير: إضافة "زر الطوارئ" لاستكمال عملية الـ 2FA آلياً من وضع التحكم اليدوي.
  * ==========================================================
  */
 
@@ -211,7 +210,6 @@ async function removeRedDot(page) { await page.evaluate(() => { const dot = docu
 // ================= أنظمة القوائم التفاعلية =================
 async function sendInteractiveMenu(chatId, text = "🎮 **أنت الآن تتحكم بالمتصفح:**\nالبوت في وضع الاستعداد ولن يغلق إلا بموافقتك.") {
     const opts = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
-        [{ text: '🚨 زر الطوارئ (إكمال 2FA تلقائياً)', callback_data: 'int_emergency' }], // 👈 تمت الإضافة هنا
         [{ text: '🌐 البحث عن الرابط', callback_data: 'int_goto_url' }], [{ text: '🔍 البحث على النص والضغط عليه', callback_data: 'int_search_text' }],
         [{ text: '🖱️ ضغط ماوس (شبكة شفافة)', callback_data: 'int_mouse_menu' }], [{ text: '⌨️ كتابة نص', callback_data: 'int_type_text' }, { text: '↩️ انتر (Enter)', callback_data: 'int_press_enter' }],
         [{ text: '📸 تحديث الشاشة', callback_data: 'int_refresh' }, { text: '🔐 المتابعة الى AF2', callback_data: 'int_continue_af2' }],
@@ -669,117 +667,7 @@ bot.on('callback_query', async (query) => {
         const action = query.data.replace('int_', '');
         if (!state.isInteractive || !state.page) return bot.sendMessage(chatId, "⚠️ الجلسة منتهية.");
 
-        // ================= إضافة زر الطوارئ هنا =================
-        if (action === 'emergency') {
-            bot.sendMessage(chatId, "🚨 **تم تفعيل زر الطوارئ:** جاري القفز لرابط الأمان وإكمال عملية الـ 2FA تلقائياً...");
-            try {
-                // 1. القفز لرابط الأمان وتحديث الصفحة قسرياً لضمان تحميلها
-                await state.page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
-                await state.page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
-                await sleep(5000);
-
-                // 2. كاسحة النوافذ (إغلاق أي نوافذ تحجب الرؤية مثل Skip Tour)
-                await state.page.keyboard.press('Escape').catch(()=>{});
-                await sleep(1000);
-                const popupTexts = ['Continue', 'Skip Tour', 'Skip', 'Next', 'Okay', 'Done'];
-                for (let i = 0; i < 2; i++) {
-                    for (const pText of popupTexts) {
-                        try {
-                            const btn = state.page.locator(`button:has-text("${pText}"), a:has-text("${pText}"), [role="button"]:has-text("${pText}")`).last();
-                            if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
-                                await btn.click({ force: true });
-                                await sleep(1000);
-                            }
-                        } catch (e) {}
-                    }
-                }
-
-                // التأكد من أننا في صفحة السكيورتي
-                const mfaVisible = await state.page.locator('text="Multi-factor authentication"').first().isVisible().catch(()=>false);
-                const troubleVisibleCheck = await state.page.locator('text="Trouble scanning?"').first().isVisible().catch(()=>false);
-                if (!mfaVisible && !troubleVisibleCheck) {
-                    await state.page.goto("https://chatgpt.com/").catch(()=>{});
-                    await sleep(1000);
-                    await state.page.goto("https://chatgpt.com/#settings/Security").catch(()=>{});
-                    await sleep(4000);
-                }
-
-                // 3. الضغط الدقيق على الإحداثيات (المربع 527)
-                try { await state.page.mouse.click(986.56, 353.28); } catch(e) {}
-                await sleep(3000);
-
-                // 4. الضغط على Trouble scanning
-                try {
-                    let troubleBtn = state.page.locator('text="Trouble scanning?"').first();
-                    if (!(await troubleBtn.isVisible({ timeout: 2000 }).catch(()=>false))) {
-                        const smartEnableBtn = state.page.locator('button:has-text("Enable"), button:has-text("Set up")').last();
-                        if (await smartEnableBtn.isVisible({ timeout: 1500 }).catch(()=>false)) { await smartEnableBtn.click({ force: true }); await sleep(2000); }
-                    }
-                    if (await troubleBtn.isVisible({ timeout: 2000 }).catch(()=>false)) await troubleBtn.click();
-                    else await state.page.locator('text="Trouble scanning?"').first().click({ force: true }).catch(()=>{});
-                } catch(e) {}
-                await sleep(2000);
-
-                // 5. استخراج الكود 32 والمصادقة من موقع 2fa.fb.tools
-                let pageText = await state.page.innerText('body');
-                let secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
-                
-                if (secretMatch) {
-                    const secretCode = secretMatch[0];
-                    const mfaPage = await state.context.newPage();
-                    await mfaPage.goto(`https://2fa.fb.tools/${secretCode}`).catch(()=>{});
-                    await sleep(3000);
-                    const mfaText = await mfaPage.innerText('body');
-                    const code6Match = mfaText.match(/\b\d{3}\s*\d{3}\b/);
-                    
-                    if (code6Match) {
-                        const code6 = code6Match[0].replace(/\s+/g, '');
-                        await mfaPage.close(); await state.page.bringToFront();
-                        
-                        const codeInput = state.page.locator('input[type="text"], input[placeholder*="code" i]').first();
-                        if (await codeInput.isVisible().catch(()=>false)) await codeInput.fill(code6);
-                        else await state.page.keyboard.type(code6, { delay: 100 });
-                        
-                        await sleep(1500);
-                        const enableBtn = state.page.locator('button:has-text("Verify"), button:has-text("Enable")').first();
-                        if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.click();
-                        else await state.page.keyboard.press('Enter');
-                        await sleep(3000);
-                        
-                        const acc = state.accountInfo || { email: "غير متوفر", password: "غير متوفر" };
-                        await bot.sendMessage(chatId, `✅ **تمت المصادقة الثنائية بنجاح عبر الطوارئ!**\n\n📧 **الإيميل:** \`${acc.email}\`\n🔑 **الباسورد:** \`${acc.password}\`\n🔗 **رابط المصادقة:** https://2fa.fb.tools/${secretCode}`, { parse_mode: 'Markdown' });
-                        
-                        // 6. استخراج السشن كخطوة أخيرة
-                        try {
-                            await state.page.goto("https://chatgpt.com/api/auth/session", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
-                            await sleep(2000);
-                            let sessionText = "";
-                            try { sessionText = await state.page.innerText('body'); } catch (err) { sessionText = await state.page.evaluate(() => document.body ? document.body.innerText : document.documentElement.innerText).catch(() => "لم يتم العثور على بيانات"); }
-                            const sessionFilePath = path.join(__dirname, `session_${Date.now()}.txt`);
-                            fs.writeFileSync(sessionFilePath, sessionText);
-                            await bot.sendDocument(chatId, sessionFilePath, { caption: "📄 **بيانات السشن**" }).catch(()=>{});
-                            if (fs.existsSync(sessionFilePath)) fs.unlinkSync(sessionFilePath);
-                        } catch (sessionErr) {}
-                        
-                        state.isInteractive = false;
-                        if (state.context) await state.context.close().catch(()=>{});
-                        if (state.tempDir) try { fs.rmSync(state.tempDir, { recursive: true, force: true }); } catch {}
-                        
-                        const jsCode = state.codeGen.getFinalScript();
-                        const logPath = path.join(__dirname, `AutoGenerated_Script_${Date.now()}.js`);
-                        fs.writeFileSync(logPath, jsCode);
-                        await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت النهائي!**", parse_mode: 'Markdown' });
-                        fs.unlinkSync(logPath);
-                        if (state.resolveInteractive) state.resolveInteractive();
-                        isProcessing = false; sendMainMenu(chatId);
-                    } else {
-                        bot.sendMessage(chatId, "❌ لم أتمكن من استخراج كود الـ 6 أرقام من الأداة."); await sendInteractiveMenu(chatId);
-                    }
-                } else { bot.sendMessage(chatId, "❌ لم أتمكن من العثور على الكود 32 حرف."); await sendInteractiveMenu(chatId); }
-            } catch (err) { bot.sendMessage(chatId, `❌ حدث خطأ في الطوارئ: ${err.message}`); await sendInteractiveMenu(chatId); }
-            return;
-        }
-        else if (action === 'goto_url') {
+        if (action === 'goto_url') {
             bot.sendMessage(chatId, "🌐 أرسل **الرابط (URL)**:", { reply_markup: { inline_keyboard: [[{text: "🔙 رجوع", callback_data: "int_back_main"}]] } });
             state.step = 'awaiting_goto_url';
         }
@@ -844,7 +732,7 @@ bot.on('callback_query', async (query) => {
                         await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم توليد السكربت النهائي!**", parse_mode: 'Markdown' });
                         fs.unlinkSync(logPath);
                         if (state.resolveInteractive) state.resolveInteractive();
-                        isProcessing = false sendMainMenu(chatId);
+                        isProcessing = false; sendMainMenu(chatId);
                     } else {
                         bot.sendMessage(chatId, "❌ لم أتمكن من استخراج كود الـ 6 أرقام."); await sendInteractiveMenu(chatId);
                     }
@@ -920,4 +808,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (تم إضافة زر الطوارئ 🚨 بنجاح)...");
+console.log("🤖 البوت يعمل (تم تفعيل قاهر شاشة You're all set بنجاح)...");
