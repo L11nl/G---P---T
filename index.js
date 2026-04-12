@@ -5,8 +5,8 @@
  * - أداة توليد أكواد برمجية دقيقة (Playwright Code Builder).
  * - ترقيم تلقائي لجميع خطوات السكربت (الخطوة 1، الخطوة 2...).
  * - توليد كود ديناميكي ذكي لجلب كود 2FA (يدعم الأرقام ذات المسافات).
- * - 🛡️ درع الحماية الشامل (V5): تمت إضافة كاسحة للنوافذ الجديدة (Okay, let's go) قبل الإعدادات.
- * - 🎯 الضغط الدقيق: الإحداثيات 986.56, 353.28 تضرب بدقة المربع رقم 527.
+ * - 🛡️ الدرع الخارق (V6): استخدام التطابق الدقيق والعنصر الأخير (.last) مع وضع Skip كأولوية قصوى!
+ * - 🎯 يضمن مسح استبيان (What brings you to ChatGPT) وتجاوز الأزرار المعطلة المخادعة.
  * ==========================================================
  */
 
@@ -402,15 +402,21 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
              
              userState[chatId].accountInfo = { email: email, password: chatGptPassword };
 
-             // --- تنظيف مبدئي مخفي في الصفحة الرئيسية ---
-             const earlySkipBtns = ["Okay, let's go", "Okay, let’s go", "Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
+             // --- تنظيف مبدئي صامت للصفحة الرئيسية لتسريع الأداء (تجاهل المخفي وقنص المرئي) ---
+             const earlyBtns = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];
              for (let i = 0; i < 2; i++) {
-                 for (const btnText of earlySkipBtns) {
+                 for (const bText of earlyBtns) {
                      try {
-                         const btn = page.locator(`button:has-text("${btnText}"), text="${btnText}"`).first();
-                         if (await btn.isVisible({ timeout: 1000 }).catch(()=>false)) {
+                         let btn = page.getByText(bText, { exact: true }).last();
+                         if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
                              await btn.click({ force: true });
                              await sleep(1000);
+                         } else {
+                             let btn2 = page.locator(`button:has-text("${bText}")`).last();
+                             if (await btn2.isVisible({ timeout: 500 }).catch(()=>false)) {
+                                 await btn2.click({ force: true });
+                                 await sleep(1000);
+                             }
                          }
                      } catch (e) {}
                  }
@@ -428,18 +434,24 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
                  await sleep(4000);
 
-                 // 🛡️ درع الحماية الشامل V5 في الوضع اليدوي (بدون استخدام Escape لأنه يغلق الإعدادات)
+                 // 🛡️ درع الحماية الشامل V6 في الوضع اليدوي
                  codeGen.addRawBlock(
-                     "تأكيد إغلاق أي نوافذ ترحيبية متتالية تحجب إعدادات الأمان (مثل Okay, let's go)",
+                     "كاسحة النوافذ (V6): استخدام .last() والتطابق الدقيق وتعديل أولويات الأزرار لاصطياد Skip وتجاهل الروابط المخفية",
                      [
-                         `const shieldBtns = ["Okay, let's go", "Okay, let’s go", "Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];`,
+                         `const shieldBtns = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];`,
                          `for (let i = 0; i < 3; i++) {`,
                          `    for (const bText of shieldBtns) {`,
                          `        try {`,
-                         `            const btn = page.locator(\`button:has-text("\${bText}"), text="\${bText}"\`).first();`,
-                         `            if (await btn.isVisible({ timeout: 1000 })) {`,
+                         `            let btn = page.getByText(bText, { exact: true }).last();`,
+                         `            if (await btn.isVisible({ timeout: 500 })) {`,
                          `                await btn.click({ force: true });`,
                          `                await page.waitForTimeout(1000);`,
+                         `            } else {`,
+                         `                let btn2 = page.locator(\`button:has-text("\${bText}")\`).last();`,
+                         `                if (await btn2.isVisible({ timeout: 500 })) {`,
+                         `                    await btn2.click({ force: true });`,
+                         `                    await page.waitForTimeout(1000);`,
+                         `                }`,
                          `            }`,
                          `        } catch (e) {}`,
                          `    }`,
@@ -447,19 +459,24 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                      ]
                  );
                  
-                 const shieldBtnsManual = ["Okay, let's go", "Okay, let’s go", "Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
+                 const shieldBtnsManual = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];
                  for (let i = 0; i < 3; i++) {
                      for (const bText of shieldBtnsManual) {
                          try {
-                             const btn = page.locator(`button:has-text("${bText}"), text="${bText}"`).first();
-                             if (await btn.isVisible({ timeout: 1000 }).catch(()=>false)) {
+                             let btn = page.getByText(bText, { exact: true }).last();
+                             if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
                                  await btn.click({ force: true });
                                  await sleep(1000);
+                             } else {
+                                 let btn2 = page.locator(`button:has-text("${bText}")`).last();
+                                 if (await btn2.isVisible({ timeout: 500 }).catch(()=>false)) {
+                                     await btn2.click({ force: true });
+                                     await sleep(1000);
+                                 }
                              }
                          } catch (e) {}
                      }
                  }
-                 await sleep(1000);
 
                  currentPhotoId = await sendStepPhoto(page, chatId, "🛑 **نحن الآن في صفحة الأمان (Security).**\nاستخدم الماوس لتحديد الزر الذي يظهر الكود السري (Trouble scanning).\n\nبمجرد أن يظهر الكود، اضغط **(🔐 المتابعة الى AF2)** من القائمة ليكمل البوت العملية تلقائياً ويستخرج السكربت.", currentPhotoId);
                  
@@ -475,20 +492,26 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  codeGen.addCommand(`await new Promise(r => setTimeout(r, 5000));`);
 
                  // 🛡️ ========================================================
-                 // 💡 درع الحماية الشامل (Shield V5): يعمل الآن في الصفحة الرئيسية
-                 // ليمسح (Ask anything) و (ChatGPT Tips) بالكامل قبل الدخول للإعدادات
+                 // 💡 كاسحة النوافذ الشاملة (Shield V6)
+                 // يضمن ضرب Skip قبل Next وتجاهل الروابط المخفية عبر استخدام (.last)
                  // ========================================================
                  codeGen.addRawBlock(
-                     "دالة ذكية لتخطي جميع النوافذ الترحيبية (Onboarding) المتتالية قبل فتح الإعدادات",
+                     "كاسحة النوافذ (V6): استخدام .last() والتطابق الدقيق وتعديل أولويات الأزرار لاصطياد Skip وتجاهل الروابط المخفية",
                      [
-                         `const shieldBtns = ["Okay, let's go", "Okay, let’s go", "Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];`,
+                         `const shieldBtns = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];`,
                          `for (let i = 0; i < 3; i++) {`,
                          `    for (const bText of shieldBtns) {`,
                          `        try {`,
-                         `            const btn = page.locator(\`button:has-text("\${bText}"), text="\${bText}"\`).first();`,
-                         `            if (await btn.isVisible({ timeout: 1000 })) {`,
+                         `            let btn = page.getByText(bText, { exact: true }).last();`,
+                         `            if (await btn.isVisible({ timeout: 500 })) {`,
                          `                await btn.click({ force: true });`,
                          `                await page.waitForTimeout(1000);`,
+                         `            } else {`,
+                         `                let btn2 = page.locator(\`button:has-text("\${bText}")\`).last();`,
+                         `                if (await btn2.isVisible({ timeout: 500 })) {`,
+                         `                    await btn2.click({ force: true });`,
+                         `                    await page.waitForTimeout(1000);`,
+                         `                }`,
                          `            }`,
                          `        } catch (e) {}`,
                          `    }`,
@@ -496,14 +519,20 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                      ]
                  );
 
-                 const shieldBtnsAuto = ["Okay, let's go", "Okay, let’s go", "Skip Tour", "Next", "Continue", "Okay", "Done", "Skip"];
+                 const shieldBtnsAuto = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];
                  for (let i = 0; i < 3; i++) {
                      for (const bText of shieldBtnsAuto) {
                          try {
-                             const btn = page.locator(`button:has-text("${bText}"), text="${bText}"`).first();
-                             if (await btn.isVisible({ timeout: 1000 }).catch(()=>false)) {
+                             let btn = page.getByText(bText, { exact: true }).last();
+                             if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
                                  await btn.click({ force: true });
                                  await sleep(1000);
+                             } else {
+                                 let btn2 = page.locator(`button:has-text("${bText}")`).last();
+                                 if (await btn2.isVisible({ timeout: 500 }).catch(()=>false)) {
+                                     await btn2.click({ force: true });
+                                     await sleep(1000);
+                                 }
                              }
                          } catch (e) {}
                      }
@@ -514,6 +543,19 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
                  codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
                  await sleep(4000);
+
+                 // مسحة صامتة سريعة في حال ظهر الاستبيان متأخراً في صفحة الأمان
+                 for (let i = 0; i < 1; i++) {
+                     for (const bText of shieldBtnsAuto) {
+                         try {
+                             let btn = page.getByText(bText, { exact: true }).last();
+                             if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
+                                 await btn.click({ force: true });
+                                 await sleep(500);
+                             }
+                         } catch (e) {}
+                     }
+                 }
 
                  // === الخطوة 11: الضغط كليك بالماوس على المربع (527) عبر الإحداثيات: X=986.56, Y=353.28 ===
                  codeGen.addStep("الضغط كليك بالماوس على المربع رقم (527) عبر الإحداثيات: X=986.56, Y=353.28");
@@ -978,4 +1020,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل الآن (مع الدرع المطور V5 لإنهاء نوافذ Okay let's go والضغط على المربع 527 بدقة)...");
+console.log("🤖 البوت يعمل الآن بقوة الدرع الخارق V6 (دقة مطلقة لتجاهل الأزرار المعطلة والروابط المخفية)...");
