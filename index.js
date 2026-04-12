@@ -6,7 +6,7 @@
  * - ترقيم تلقائي لجميع خطوات السكربت (الخطوة 1، الخطوة 2...).
  * - توليد كود ديناميكي ذكي لجلب كود 2FA (يدعم الأرقام ذات المسافات).
  * - نظام تفاعلي كامل وزر "البحث عن الرابط".
- * - تم تطبيق السكربت المستخرج الأحدث (النسخة المختصرة والسريعة) على الوضع التلقائي.
+ * - 🛡️ مدمج به درع حماية لتخطي نافذة (Ask anything / Skip Tour) قبل ضغط الماوس لمنع التوقف.
  * ==========================================================
  */
 
@@ -108,7 +108,6 @@ async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
             const res = await axios.get(`${MAIL_API}/messages`, { headers: { Authorization: `Bearer ${token}` } });
             const messages = res.data['hydra:member'] || [];
             for (const msg of messages) {
-                // الكود القادم من الإيميل يتكون من 6 أرقام متصلة
                 const codeMatch = `${msg.subject || ''} ${msg.intro || ''}`.match(/\b\d{6}\b/);
                 if (codeMatch) return codeMatch[0];
             }
@@ -136,7 +135,6 @@ const TOTAL_CELLS = GRID_COLS * GRID_ROWS;
 
 async function drawGridAndScreenshot(page, chatId, caption) {
     console.log('\n--- 🟡 بدء رسم الشبكة الشفافة المصغرة جداً (1125 مربع) ---');
-
     const p = path.join(__dirname, `grid_${Date.now()}.png`);
 
     try {
@@ -444,6 +442,27 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
                  await sleep(4000);
 
+                 // 🛡️ درع الحماية في الوضع اليدوي قبل أخذ الصورة
+                 codeGen.addRawBlock(
+                     "تأكيد إغلاق أي نافذة ترحيبية متأخرة تحجب إعدادات الأمان",
+                     [
+                         `try {`,
+                         `    const skipTourBtn = page.locator('text="Skip Tour"').first();`,
+                         `    if (await skipTourBtn.isVisible({ timeout: 2000 })) await skipTourBtn.click({ force: true });`,
+                         `} catch (e) {}`,
+                         `await page.keyboard.press('Escape'); // إجراء احتياطي`
+                     ]
+                 );
+                 try {
+                     const skipTourBtn = page.locator('text="Skip Tour"').first();
+                     if (await skipTourBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
+                         await skipTourBtn.click({ force: true });
+                         await sleep(1000);
+                     }
+                 } catch (e) {}
+                 await page.keyboard.press('Escape');
+                 await sleep(500);
+
                  currentPhotoId = await sendStepPhoto(page, chatId, "🛑 **نحن الآن في صفحة الأمان (Security).**\nاستخدم الماوس لتحديد الزر الذي يظهر الكود السري (Trouble scanning).\n\nبمجرد أن يظهر الكود، اضغط **(🔐 المتابعة الى AF2)** من القائمة ليكمل البوت العملية تلقائياً ويستخرج السكربت.", currentPhotoId);
                  
                  await startInteractiveMode(chatId, page, context, tempDir, codeGen, currentPhotoId);
@@ -451,10 +470,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
 
              } else {
                  currentPhotoId = await sendStepPhoto(page, chatId, `✅ **نجاح (تلقائي):**\n\`${result}\`\n\nيتم الآن الانتقال لتفعيل المصادقة الثنائية (2FA) عبر المسار الجديد والمختصر...`, currentPhotoId);
-                 
-                 // ========================================================
-                 // 💡 بداية تطبيق السكربت المستخرج (الجديد والمختصر) على الوضع التلقائي
-                 // ========================================================
                  
                  // === الخطوة 9: الانتظار لمدة 5 ثواني قبل التوجه لإعدادات الأمان ===
                  codeGen.addStep("الانتظار لمدة 5 ثواني قبل التوجه لإعدادات الأمان");
@@ -466,6 +481,31 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
                  codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
                  await sleep(4000);
+
+                 // 🛡️ ========================================================
+                 // 💡 درع الحماية (Shield): قنص نافذة (Ask anything / Skip Tour) المتأخرة
+                 // يتم إغلاقها فور ظهورها في صفحة الأمان لكي لا تحجب الماوس
+                 // ========================================================
+                 codeGen.addRawBlock(
+                     "تأكيد إغلاق نافذة (Ask anything / Skip Tour) المتأخرة التي تحجب إعدادات الأمان",
+                     [
+                         `try {`,
+                         `    const skipTourBtn = page.locator('text="Skip Tour"').first();`,
+                         `    if (await skipTourBtn.isVisible({ timeout: 2000 })) await skipTourBtn.click({ force: true });`,
+                         `} catch (e) {}`,
+                         `await page.keyboard.press('Escape'); // إجراء احتياطي لقتل النوافذ العنيدة`
+                     ]
+                 );
+
+                 try {
+                     const skipTourBtn = page.locator('text="Skip Tour"').first();
+                     if (await skipTourBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
+                         await skipTourBtn.click({ force: true });
+                         await sleep(1000);
+                     }
+                 } catch (e) {}
+                 await page.keyboard.press('Escape');
+                 await sleep(1000); // استراحة لتنظيف الشاشة قبل الماوس
 
                  // === الخطوة 11: الضغط كليك بالماوس على الإحداثيات: X=986.56, Y=353.28 ===
                  codeGen.addStep("الضغط كليك بالماوس على الإحداثيات: X=986.56, Y=353.28");
@@ -930,4 +970,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل الآن (بالنسخة السريعة والمختصرة لتفعيل الـ 2FA التلقائي)...");
+console.log("🤖 البوت يعمل الآن (مع درع حماية لتخطي نافذة Skip Tour وحل مشكلة التوقف)...");
