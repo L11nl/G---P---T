@@ -6,7 +6,7 @@
  * - ترقيم تلقائي لجميع خطوات السكربت (الخطوة 1، الخطوة 2...).
  * - توليد كود ديناميكي ذكي لجلب كود 2FA (يدعم الأرقام ذات المسافات).
  * - نظام تفاعلي كامل وزر "البحث عن الرابط".
- * - تم تطبيق السكربت المستخرج المخصص (بإحداثيات الماوس) داخل الوضع التلقائي.
+ * - تم تطبيق السكربت المستخرج الأحدث (النسخة المختصرة والسريعة) على الوضع التلقائي.
  * ==========================================================
  */
 
@@ -450,10 +450,10 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  return true;
 
              } else {
-                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **نجاح (تلقائي):**\n\`${result}\`\n\nيتم الآن الانتقال لتفعيل المصادقة الثنائية (2FA) عبر مسار السكربت المخصص...`, currentPhotoId);
+                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **نجاح (تلقائي):**\n\`${result}\`\n\nيتم الآن الانتقال لتفعيل المصادقة الثنائية (2FA) عبر المسار الجديد والمختصر...`, currentPhotoId);
                  
                  // ========================================================
-                 // 💡 بداية تطبيق السكربت المستخرج على الوضع التلقائي بالترتيب
+                 // 💡 بداية تطبيق السكربت المستخرج (الجديد والمختصر) على الوضع التلقائي
                  // ========================================================
                  
                  // === الخطوة 9: الانتظار لمدة 5 ثواني قبل التوجه لإعدادات الأمان ===
@@ -467,35 +467,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
                  await sleep(4000);
 
-                 // === الخطوة 11: البحث عن النص "Skip Tour" والضغط عليه ===
-                 codeGen.addStep('البحث عن النص "Skip Tour" والضغط عليه');
-                 try {
-                     const skipBtn = page.locator('text="Skip Tour"').first();
-                     if (await skipBtn.isVisible({ timeout: 2000 })) {
-                         await skipBtn.click({ force: true });
-                     }
-                 } catch(e) {}
-                 codeGen.addCommand(`await page.locator('text="Skip Tour"').first().click();`);
-                 await sleep(1500);
-
-                 // === الخطوة 12: البحث عن النص "Continue" والضغط عليه ===
-                 codeGen.addStep('البحث عن النص "Continue" والضغط عليه');
-                 try {
-                     const contBtn = page.locator('text="Continue"').first();
-                     if (await contBtn.isVisible({ timeout: 2000 })) {
-                         await contBtn.click({ force: true });
-                     }
-                 } catch(e) {}
-                 codeGen.addCommand(`await page.locator('text="Continue"').first().click();`);
-                 await sleep(1500);
-
-                 // === الخطوة 13: الذهاب إلى الرابط المخصص: https://chatgpt.com/#settings/Security ===
-                 codeGen.addStep('الذهاب إلى الرابط المخصص: https://chatgpt.com/#settings/Security');
-                 await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
-                 codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded" });`);
-                 await sleep(4000);
-
-                 // === الخطوة 14: الضغط كليك بالماوس على الإحداثيات: X=986.56, Y=353.28 ===
+                 // === الخطوة 11: الضغط كليك بالماوس على الإحداثيات: X=986.56, Y=353.28 ===
                  codeGen.addStep("الضغط كليك بالماوس على الإحداثيات: X=986.56, Y=353.28");
                  try {
                      await page.mouse.click(986.56, 353.28);
@@ -503,7 +475,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  codeGen.addCommand(`await page.mouse.click(986.56, 353.28);`);
                  await sleep(3000);
 
-                 // === الخطوة 15: البحث عن النص "Trouble scanning?" والضغط عليه ===
+                 // === الخطوة 12: البحث عن النص "Trouble scanning?" والضغط عليه ===
                  codeGen.addStep('البحث عن النص "Trouble scanning?" والضغط عليه');
                  try {
                      const troubleBtn = page.locator('text="Trouble scanning?"').first();
@@ -516,6 +488,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  codeGen.addCommand(`await page.locator('text="Trouble scanning?"').first().click();`);
                  await sleep(2000);
                  
+                 // === الخطوة 13: استخراج الكود السري والمصادقة ===
                  const pageText = await page.innerText('body');
                  const secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
                  
@@ -523,9 +496,8 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                      const secretCode = secretMatch[0];
                      currentPhotoId = await sendStepPhoto(page, chatId, `🔑 تم العثور على الكود السري بنجاح:\n\`${secretCode}\``, currentPhotoId);
                      
-                     // === الخطوة 16: استخراج الكود السري وفتح نافذة 2fa.fb.tools لنسخ 6 أرقام ولصقها تلقائياً ===
                      codeGen.addRawBlock(
-                        `استخراج الكود السري (${secretCode}) وفتح نافذة 2fa.fb.tools لنسخ 6 أرقام ولصقها تلقائياً`,
+                        `استخراج الكود السري وفتح نافذة 2fa.fb.tools لنسخ 6 أرقام ولصقها تلقائياً`,
                         [
                             `const mfaPage = await context.newPage();`,
                             `await mfaPage.goto("https://2fa.fb.tools/${secretCode}", { waitUntil: "domcontentloaded" });`,
@@ -577,7 +549,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                          
                          await sleep(3000);
                          
-                         currentPhotoId = await sendStepPhoto(page, chatId, "✅ تمت المصادقة الثنائية (2FA) تلقائياً بنجاح وفق مسار السكربت الدقيق!", currentPhotoId);
+                         currentPhotoId = await sendStepPhoto(page, chatId, "✅ تمت المصادقة الثنائية (2FA) تلقائياً بنجاح وفق مسار السكربت المختصر والدقيق!", currentPhotoId);
                          codeGen.addStep("تم تفعيل 2FA بنجاح. الدخول في وضع الاستعداد بانتظار أوامرك.");
                          await startInteractiveMode(chatId, page, context, tempDir, codeGen, currentPhotoId);
                          return true;
@@ -667,7 +639,7 @@ bot.on('callback_query', async (query) => {
                     
                     // === كتابة الأكواد الديناميكية الحقيقية في السكربت المُستخرج ===
                     state.codeGen.addRawBlock(
-                        `استخراج الكود السري (${secretCode}) وفتح نافذة 2fa.fb.tools لنسخ 6 أرقام ولصقها تلقائياً`,
+                        `استخراج الكود السري وفتح نافذة 2fa.fb.tools لنسخ 6 أرقام ولصقها تلقائياً`,
                         [
                             `const mfaPage = await context.newPage();`,
                             `await mfaPage.goto("https://2fa.fb.tools/${secretCode}", { waitUntil: "domcontentloaded" });`,
@@ -958,4 +930,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل الآن (مع دمج السكربت في مسار التشغيل التلقائي)...");
+console.log("🤖 البوت يعمل الآن (بالنسخة السريعة والمختصرة لتفعيل الـ 2FA التلقائي)...");
