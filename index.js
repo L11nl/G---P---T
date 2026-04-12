@@ -612,36 +612,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                          { parse_mode: 'Markdown' }
                      );
                      
-                     // ========================================================
-                     // جلب بيانات الـ Session بناءً على طلبك
-                     // ========================================================
-                     try {
-                         codeGen.addStep("الدخول إلى رابط السشن واستخراج البيانات");
-                         await page.goto("https://chatgpt.com/api/auth/session", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
-                         codeGen.addCommand(`await page.goto("https://chatgpt.com/api/auth/session");`);
-                         
-                         await sleep(2000);
-                         
-                         let sessionText = "";
-                         try {
-                             sessionText = await page.innerText('body');
-                         } catch (err) {
-                             sessionText = await page.evaluate(() => document.body ? document.body.innerText : document.documentElement.innerText).catch(() => "لم يتم العثور على بيانات");
-                         }
-                         
-                         const sessionFilePath = path.join(__dirname, `session_${Date.now()}.txt`);
-                         fs.writeFileSync(sessionFilePath, sessionText);
-                         
-                         await bot.sendDocument(chatId, sessionFilePath, {
-                             caption: "📄 **بيانات السشن (Session Data)**"
-                         }).catch(()=>{});
-                         
-                         if (fs.existsSync(sessionFilePath)) fs.unlinkSync(sessionFilePath);
-                     } catch (sessionErr) {
-                         // try-catch صامت لضمان عدم تحطم السكربت إطلاقاً
-                     }
-                     // ========================================================
-
                      // إنهاء الجلسة وإغلاق كل شيء
                      codeGen.addStep("تم تفعيل 2FA بنجاح - إنهاء العملية");
                      
@@ -814,36 +784,6 @@ bot.on('callback_query', async (query) => {
                             `🔗 **رابط المصادقة:** https://2fa.fb.tools/${secretCode}`,
                             { parse_mode: 'Markdown' }
                         );
-                        
-                        // ========================================================
-                        // جلب بيانات الـ Session بناءً على طلبك
-                        // ========================================================
-                        try {
-                            state.codeGen.addStep("الدخول إلى رابط السشن واستخراج البيانات");
-                            await state.page.goto("https://chatgpt.com/api/auth/session", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
-                            state.codeGen.addCommand(`await page.goto("https://chatgpt.com/api/auth/session");`);
-                            
-                            await sleep(2000);
-                            
-                            let sessionText = "";
-                            try {
-                                sessionText = await state.page.innerText('body');
-                            } catch (err) {
-                                sessionText = await state.page.evaluate(() => document.body ? document.body.innerText : document.documentElement.innerText).catch(() => "لم يتم العثور على بيانات");
-                            }
-                            
-                            const sessionFilePath = path.join(__dirname, `session_${Date.now()}.txt`);
-                            fs.writeFileSync(sessionFilePath, sessionText);
-                            
-                            await bot.sendDocument(chatId, sessionFilePath, {
-                                caption: "📄 **بيانات السشن (Session Data)**"
-                            }).catch(()=>{});
-                            
-                            if (fs.existsSync(sessionFilePath)) fs.unlinkSync(sessionFilePath);
-                        } catch (sessionErr) {
-                            // try-catch صامت لضمان عدم تحطم السكربت إطلاقاً
-                        }
-                        // ========================================================
                         
                         bot.sendMessage(chatId, "✅ جاري استخراج السكربت النهائي وإغلاق الجلسة...");
                         state.isInteractive = false;
@@ -1075,4 +1015,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل الآن...");
+console.log("🤖 البوت يعمل الآن مع نظام الرسائل النصية (بدون صور إلا للأخطاء)...");
