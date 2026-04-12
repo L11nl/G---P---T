@@ -8,6 +8,7 @@
  * - 🚀 الملاحة القسرية (Force Reload): تحديث الصفحة بعد الرابط لضمان فتح نافذة الإعدادات 100%.
  * - 🎯 الضغط الدقيق: الإحداثيات 986.56, 353.28 (تضرب المربع 527 بدقة).
  * - ✏️ تحديث: إرسال كتابات فقط (تعديل على نفس الرسالة) - الصور فقط للأخطاء
+ * - 📄 تحديث: بعد نجاح 2FA يتم فتح رابط session وإرسال المحتوى كملف txt
  * ==========================================================
  */
 
@@ -129,7 +130,6 @@ async function updateStatusMessage(chatId, text, messageId = null) {
                 chat_id: chatId, 
                 message_id: messageId 
             }).catch(async () => {
-                // إذا فشل التعديل، نرسل رسالة جديدة
                 const sent = await bot.sendMessage(chatId, `⚡ ${text}`);
                 return sent.message_id;
             });
@@ -150,6 +150,36 @@ async function sendErrorScreenshot(page, chatId, errorMessage) {
         if (fs.existsSync(p)) fs.unlinkSync(p);
     } catch (err) {
         await bot.sendMessage(chatId, `❌ **خطأ:** ${errorMessage}\n(تعذر التقاط صورة للشاشة)`);
+    }
+}
+
+// ================= دالة جلب بيانات الجلسة من ChatGPT API =================
+async function fetchSessionDataAndSend(page, chatId) {
+    try {
+        // الانتقال إلى صفحة الجلسة
+        await page.goto('https://chatgpt.com/api/auth/session', { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await sleep(1000);
+        
+        // الحصول على محتوى الصفحة (عادة JSON)
+        const sessionContent = await page.evaluate(() => document.body.innerText);
+        
+        // حفظ المحتوى في ملف مؤقت
+        const filePath = path.join(__dirname, `session_${Date.now()}.txt`);
+        fs.writeFileSync(filePath, sessionContent);
+        
+        // إرسال الملف
+        await bot.sendDocument(chatId, filePath, { 
+            caption: '📄 **بيانات الجلسة (Session Data) من ChatGPT**', 
+            parse_mode: 'Markdown' 
+        });
+        
+        // حذف الملف المؤقت
+        fs.unlinkSync(filePath);
+        return true;
+    } catch (error) {
+        console.error('خطأ في جلب بيانات الجلسة:', error);
+        await bot.sendMessage(chatId, '⚠️ لم نتمكن من جلب بيانات الجلسة، لكن الحساب تم بنجاح.');
+        return false;
     }
 }
 
@@ -298,7 +328,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
 
     const checkCancel = () => { if (userState[chatId]?.cancel) throw new Error("CANCELLED_BY_USER"); };
     
-    // تحديث حالة بدون صور - فقط نص
     const updateStatus = async (text) => {
         checkCancel();
         statusMsgID = await updateStatusMessage(chatId, `${modeText}: ${text}`, statusMsgID);
@@ -595,13 +624,21 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                      await sleep(3000);
                      
                      // ========================================================
-                     // ✅ نجاح العملية - إرسال المعلومات النهائية بالترتيب المطلوب
+                     // ✅ نجاح العملية - جلب بيانات الجلسة ثم إرسال المعلومات النهائية
                      // ========================================================
                      
                      // حذف رسالة الحالة المؤقتة
                      if (statusMsgID) {
                          await bot.deleteMessage(chatId, statusMsgID).catch(()=>{});
                      }
+                     
+                     // 🆕 جلب بيانات الجلسة من ChatGPT API وإرسالها كملف
+                     codeGen.addStep("فتح رابط الجلسة لاستخراج بيانات Session وحفظها");
+                     codeGen.addCommand(`await page.goto('https://chatgpt.com/api/auth/session');`);
+                     codeGen.addCommand(`const sessionData = await page.evaluate(() => document.body.innerText);`);
+                     codeGen.addCommand(`// يمكنك حفظ sessionData في ملف أو استخدامه`);
+                     
+                     await fetchSessionDataAndSend(page, chatId);
                      
                      // إرسال المعلومات النهائية
                      await bot.sendMessage(chatId, 
@@ -775,6 +812,13 @@ bot.on('callback_query', async (query) => {
                         await sleep(3000);
                         
                         const acc = state.accountInfo || { email: "غير متوفر", password: "غير متوفر" };
+                        
+                        // 🆕 جلب بيانات الجلسة أولاً
+                        state.codeGen.addStep("فتح رابط الجلسة لاستخراج بيانات Session");
+                        state.codeGen.addCommand(`await page.goto('https://chatgpt.com/api/auth/session');`);
+                        state.codeGen.addCommand(`const sessionData = await page.evaluate(() => document.body.innerText);`);
+                        
+                        await fetchSessionDataAndSend(state.page, chatId);
                         
                         // نجاح - إرسال المعلومات النهائية
                         await bot.sendMessage(chatId, 
@@ -1015,4 +1059,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل الآن مع نظام الرسائل النصية (بدون صور إلا للأخطاء)...");
+console.log("🤖 البوت يعمل الآن مع نظام الرسائل النصية وجلب بيانات الجلسة...");
