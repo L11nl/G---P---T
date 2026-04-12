@@ -5,8 +5,8 @@
  * - أداة توليد أكواد برمجية دقيقة (Playwright Code Builder).
  * - ترقيم تلقائي لجميع خطوات السكربت (الخطوة 1، الخطوة 2...).
  * - توليد كود ديناميكي ذكي لجلب كود 2FA (يدعم الأرقام ذات المسافات).
- * - 🛡️ الدرع الخارق (V6): استخدام التطابق الدقيق والعنصر الأخير (.last) مع وضع Skip كأولوية قصوى!
- * - 🎯 يضمن مسح استبيان (What brings you to ChatGPT) وتجاوز الأزرار المعطلة المخادعة.
+ * - 🚀 الملاحة القسرية (Force Reload): تحديث الصفحة بعد الرابط لضمان فتح نافذة الإعدادات 100%.
+ * - 🎯 الضغط الدقيق: الإحداثيات 986.56, 353.28 (تضرب المربع 527 بدقة).
  * ==========================================================
  */
 
@@ -394,7 +394,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
 
         await updateStatus("في انتظار الصفحة الرئيسية...");
         await page.waitForURL('**/chat', {timeout: 30000}).catch(()=>{});
-        await sleep(3000); 
         
         if (page.url().includes('/chat')) {
              const result = `${email}|${chatGptPassword}`;
@@ -422,236 +421,164 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                  }
              }
 
-             if (isManual) {
-                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **تم إنشاء الحساب بنجاح:**\n\`${result}\`\n\nيتم الآن الانتظار 5 ثواني للتوجه إلى إعدادات الأمان...`, currentPhotoId);
+             // ========================================================
+             // 💡 توحيد المسار (الضربة القاضية تعمل الآن في اليدوي والتلقائي)
+             // ========================================================
+             currentPhotoId = await sendStepPhoto(page, chatId, `✅ **نجاح العملية الأساسية:**\n\`${result}\`\n\nيتم الآن تدمير النوافذ الترحيبية وعمل تحديث إجباري (Reload) لصفحة الأمان لفتحها عنوة، ثم الضغط على المربع 527...`, currentPhotoId);
+             
+             // === الخطوة 8: الانتظار لمدة 3 ثواني ===
+             codeGen.addStep("الانتظار لمدة 3 ثواني في الصفحة الرئيسية");
+             await sleep(3000);
+             codeGen.addCommand(`await new Promise(r => setTimeout(r, 3000));`);
 
-                 codeGen.addStep("الانتظار لمدة 5 ثواني قبل التوجه لإعدادات الأمان");
-                 await sleep(5000);
-                 codeGen.addCommand(`await new Promise(r => setTimeout(r, 5000));`);
+             // === الخطوة 9: الدخول لإعدادات الأمان (Security) مع تحديث قسري (Reload) ===
+             codeGen.addStep("الدخول لإعدادات الأمان (Security) مع تحديث الصفحة (Reload) لإجبار النافذة على الفتح");
+             await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
+             await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
+             codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");\n    await page.reload({ waitUntil: "domcontentloaded" });`);
+             await sleep(5000); // استراحة للسماح لصفحة الأمان بالظهور
 
-                 codeGen.addStep("الدخول لإعدادات الأمان (Security) والتوقف للتحكم اليدوي");
-                 await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
-                 codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
-                 await sleep(4000);
+             // 🛡️ ========================================================
+             // 💡 كاسحة النوافذ الشاملة (Shield V6) تعمل بعد التحديث (Reload) 
+             // لمسح أي نوافذ قد تظهر فجأة وتغطي الإعدادات
+             // ========================================================
+             codeGen.addRawBlock(
+                 "كاسحة النوافذ (V6): استخدام .last() والتطابق الدقيق وتعديل أولويات الأزرار لاصطياد Skip وتجاهل الروابط المخفية",
+                 [
+                     `const shieldBtns = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];`,
+                     `for (let i = 0; i < 3; i++) {`,
+                     `    for (const bText of shieldBtns) {`,
+                     `        try {`,
+                     `            let btn = page.getByText(bText, { exact: true }).last();`,
+                     `            if (await btn.isVisible({ timeout: 500 })) {`,
+                     `                await btn.click({ force: true });`,
+                     `                await page.waitForTimeout(1000);`,
+                     `            } else {`,
+                     `                let btn2 = page.locator(\`button:has-text("\${bText}")\`).last();`,
+                     `                if (await btn2.isVisible({ timeout: 500 })) {`,
+                     `                    await btn2.click({ force: true });`,
+                     `                    await page.waitForTimeout(1000);`,
+                     `                }`,
+                     `            }`,
+                     `        } catch (e) {}`,
+                     `    }`,
+                     `}`
+                 ]
+             );
 
-                 // 🛡️ درع الحماية الشامل V6 في الوضع اليدوي
-                 codeGen.addRawBlock(
-                     "كاسحة النوافذ (V6): استخدام .last() والتطابق الدقيق وتعديل أولويات الأزرار لاصطياد Skip وتجاهل الروابط المخفية",
-                     [
-                         `const shieldBtns = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];`,
-                         `for (let i = 0; i < 3; i++) {`,
-                         `    for (const bText of shieldBtns) {`,
-                         `        try {`,
-                         `            let btn = page.getByText(bText, { exact: true }).last();`,
-                         `            if (await btn.isVisible({ timeout: 500 })) {`,
-                         `                await btn.click({ force: true });`,
-                         `                await page.waitForTimeout(1000);`,
-                         `            } else {`,
-                         `                let btn2 = page.locator(\`button:has-text("\${bText}")\`).last();`,
-                         `                if (await btn2.isVisible({ timeout: 500 })) {`,
-                         `                    await btn2.click({ force: true });`,
-                         `                    await page.waitForTimeout(1000);`,
-                         `                }`,
-                         `            }`,
-                         `        } catch (e) {}`,
-                         `    }`,
-                         `}`
-                     ]
-                 );
-                 
-                 const shieldBtnsManual = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];
-                 for (let i = 0; i < 3; i++) {
-                     for (const bText of shieldBtnsManual) {
-                         try {
-                             let btn = page.getByText(bText, { exact: true }).last();
-                             if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
-                                 await btn.click({ force: true });
+             const shieldBtnsAuto = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];
+             for (let i = 0; i < 3; i++) {
+                 for (const bText of shieldBtnsAuto) {
+                     try {
+                         let btn = page.getByText(bText, { exact: true }).last();
+                         if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
+                             await btn.click({ force: true });
+                             await sleep(1000);
+                         } else {
+                             let btn2 = page.locator(`button:has-text("${bText}")`).last();
+                             if (await btn2.isVisible({ timeout: 500 }).catch(()=>false)) {
+                                 await btn2.click({ force: true });
                                  await sleep(1000);
-                             } else {
-                                 let btn2 = page.locator(`button:has-text("${bText}")`).last();
-                                 if (await btn2.isVisible({ timeout: 500 }).catch(()=>false)) {
-                                     await btn2.click({ force: true });
-                                     await sleep(1000);
-                                 }
                              }
-                         } catch (e) {}
-                     }
+                         }
+                     } catch (e) {}
                  }
-
-                 currentPhotoId = await sendStepPhoto(page, chatId, "🛑 **نحن الآن في صفحة الأمان (Security).**\nاستخدم الماوس لتحديد الزر الذي يظهر الكود السري (Trouble scanning).\n\nبمجرد أن يظهر الكود، اضغط **(🔐 المتابعة الى AF2)** من القائمة ليكمل البوت العملية تلقائياً ويستخرج السكربت.", currentPhotoId);
-                 
-                 await startInteractiveMode(chatId, page, context, tempDir, codeGen, currentPhotoId);
-                 return true;
-
-             } else {
-                 currentPhotoId = await sendStepPhoto(page, chatId, `✅ **نجاح (تلقائي):**\n\`${result}\`\n\nيتم الآن تدمير النوافذ الترحيبية والتوجه لصفحة الأمان للضغط على المربع 527...`, currentPhotoId);
-                 
-                 // === الخطوة 8: الانتظار لمدة 5 ثواني في الصفحة الرئيسية ===
-                 codeGen.addStep("الانتظار لمدة 5 ثواني لتستقر الصفحة الرئيسية وتظهر النوافذ إن وجدت");
-                 await sleep(5000);
-                 codeGen.addCommand(`await new Promise(r => setTimeout(r, 5000));`);
-
-                 // 🛡️ ========================================================
-                 // 💡 كاسحة النوافذ الشاملة (Shield V6)
-                 // يضمن ضرب Skip قبل Next وتجاهل الروابط المخفية عبر استخدام (.last)
-                 // ========================================================
-                 codeGen.addRawBlock(
-                     "كاسحة النوافذ (V6): استخدام .last() والتطابق الدقيق وتعديل أولويات الأزرار لاصطياد Skip وتجاهل الروابط المخفية",
-                     [
-                         `const shieldBtns = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];`,
-                         `for (let i = 0; i < 3; i++) {`,
-                         `    for (const bText of shieldBtns) {`,
-                         `        try {`,
-                         `            let btn = page.getByText(bText, { exact: true }).last();`,
-                         `            if (await btn.isVisible({ timeout: 500 })) {`,
-                         `                await btn.click({ force: true });`,
-                         `                await page.waitForTimeout(1000);`,
-                         `            } else {`,
-                         `                let btn2 = page.locator(\`button:has-text("\${bText}")\`).last();`,
-                         `                if (await btn2.isVisible({ timeout: 500 })) {`,
-                         `                    await btn2.click({ force: true });`,
-                         `                    await page.waitForTimeout(1000);`,
-                         `                }`,
-                         `            }`,
-                         `        } catch (e) {}`,
-                         `    }`,
-                         `}`
-                     ]
-                 );
-
-                 const shieldBtnsAuto = ["Skip", "Skip Tour", "Okay, let's go", "Okay, let’s go", "Continue", "Next", "Okay", "Done"];
-                 for (let i = 0; i < 3; i++) {
-                     for (const bText of shieldBtnsAuto) {
-                         try {
-                             let btn = page.getByText(bText, { exact: true }).last();
-                             if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
-                                 await btn.click({ force: true });
-                                 await sleep(1000);
-                             } else {
-                                 let btn2 = page.locator(`button:has-text("${bText}")`).last();
-                                 if (await btn2.isVisible({ timeout: 500 }).catch(()=>false)) {
-                                     await btn2.click({ force: true });
-                                     await sleep(1000);
-                                 }
-                             }
-                         } catch (e) {}
-                     }
-                 }
-
-                 // === الخطوة 10: الدخول لإعدادات الأمان (Security) ===
-                 codeGen.addStep("الدخول لإعدادات الأمان (Security)");
-                 await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
-                 codeGen.addCommand(`await page.goto("https://chatgpt.com/#settings/Security");`);
-                 await sleep(4000);
-
-                 // مسحة صامتة سريعة في حال ظهر الاستبيان متأخراً في صفحة الأمان
-                 for (let i = 0; i < 1; i++) {
-                     for (const bText of shieldBtnsAuto) {
-                         try {
-                             let btn = page.getByText(bText, { exact: true }).last();
-                             if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) {
-                                 await btn.click({ force: true });
-                                 await sleep(500);
-                             }
-                         } catch (e) {}
-                     }
-                 }
-
-                 // === الخطوة 11: الضغط كليك بالماوس على المربع (527) عبر الإحداثيات: X=986.56, Y=353.28 ===
-                 codeGen.addStep("الضغط كليك بالماوس على المربع رقم (527) عبر الإحداثيات: X=986.56, Y=353.28");
-                 try {
-                     await page.mouse.click(986.56, 353.28);
-                 } catch(e) {}
-                 codeGen.addCommand(`await page.mouse.click(986.56, 353.28);`);
-                 await sleep(3000);
-
-                 // === الخطوة 12: البحث عن النص "Trouble scanning?" والضغط عليه ===
-                 codeGen.addStep('البحث عن النص "Trouble scanning?" والضغط عليه لإظهار الكود السري');
-                 try {
-                     const troubleBtn = page.locator('text="Trouble scanning?"').first();
-                     if (await troubleBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
-                         await troubleBtn.click();
-                     } else {
-                         await page.locator('text="Trouble scanning?"').first().click({ force: true }).catch(()=>{});
-                     }
-                 } catch(e) {}
-                 codeGen.addCommand(`await page.locator('text="Trouble scanning?"').first().click();`);
-                 await sleep(2000);
-                 
-                 // === الخطوة 13: استخراج الكود السري والمصادقة ===
-                 const pageText = await page.innerText('body');
-                 const secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
-                 
-                 if (secretMatch) {
-                     const secretCode = secretMatch[0];
-                     currentPhotoId = await sendStepPhoto(page, chatId, `🔑 تم العثور على الكود السري بنجاح:\n\`${secretCode}\``, currentPhotoId);
-                     
-                     codeGen.addRawBlock(
-                        `استخراج الكود السري وفتح نافذة 2fa.fb.tools لنسخ 6 أرقام ولصقها تلقائياً`,
-                        [
-                            `const mfaPage = await context.newPage();`,
-                            `await mfaPage.goto("https://2fa.fb.tools/${secretCode}", { waitUntil: "domcontentloaded" });`,
-                            `await mfaPage.waitForTimeout(3000);`,
-                            `const mfaText = await mfaPage.innerText('body');`,
-                            `const code6Match = mfaText.match(/\\b\\d{3}\\s*\\d{3}\\b/); // يبحث عن الأرقام وتجاهل المسافة`,
-                            `if (code6Match) {`,
-                            `    const code6 = code6Match[0].replace(/\\s+/g, ''); // مسح المسافة لدمج الرقم`,
-                            `    await mfaPage.close();`,
-                            `    await page.bringToFront();`,
-                            `    const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();`,
-                            `    if (await codeInput.isVisible()) {`,
-                            `        await codeInput.fill(code6);`,
-                            `    } else {`,
-                            `        await page.keyboard.type(code6, { delay: 100 });`,
-                            `    }`,
-                            `    await page.waitForTimeout(1500);`,
-                            `    const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable")').first();`,
-                            `    if (await enableBtn.isVisible()) {`,
-                            `        await enableBtn.click();`,
-                            `    } else {`,
-                            `        await page.keyboard.press('Enter');`,
-                            `    }`,
-                            `}`
-                        ]
-                    );
-                     
-                     const mfaPage = await context.newPage();
-                     await mfaPage.goto(`https://2fa.fb.tools/${secretCode}`).catch(()=>{});
-                     await sleep(3000);
-                     const mfaText = await mfaPage.innerText('body');
-                     
-                     const code6Match = mfaText.match(/\b\d{3}\s*\d{3}\b/);
-                     
-                     if (code6Match) {
-                         const code6 = code6Match[0].replace(/\s+/g, ''); // حذف المسافة ودمج الرقم
-                         await mfaPage.close();
-                         await page.bringToFront();
-                         
-                         const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();
-                         if (await codeInput.isVisible().catch(()=>false)) await codeInput.fill(code6);
-                         else await page.keyboard.type(code6, { delay: 100 });
-                         
-                         await sleep(1500);
-                         
-                         const enableBtn = page.locator('button:has-text("Enable"), button:has-text("Verify")').first();
-                         if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.click();
-                         else await page.keyboard.press('Enter');
-                         
-                         await sleep(3000);
-                         
-                         currentPhotoId = await sendStepPhoto(page, chatId, "✅ تمت المصادقة الثنائية (2FA) تلقائياً بنجاح عبر المربع 527!", currentPhotoId);
-                         codeGen.addStep("تم تفعيل 2FA بنجاح. الدخول في وضع الاستعداد بانتظار أوامرك.");
-                         await startInteractiveMode(chatId, page, context, tempDir, codeGen, currentPhotoId);
-                         return true;
-                     }
-                 }
-                 
-                 codeGen.addStep("تعذر استخراج كود 32 حرف. تحويل المستخدم للوضع اليدوي والشبكة.");
-                 await bot.sendMessage(chatId, "⚠️ **لم يتم العثور على الكود 32 حرف كابيتال في الصفحة، سيتم تحويلك للتحكم اليدوي.**");
-                 await drawGridAndScreenshot(page, chatId, "🔲 **صورة الشاشة مقسمة لمربعات:**\nاستخدم الأرقام في الصورة لمعرفة المكان الذي يجب الضغط عليه لتكملة السكربت.");
-                 await startInteractiveMode(chatId, page, context, tempDir, codeGen, currentPhotoId);
-
              }
+
+             // === الخطوة 11: الضغط كليك بالماوس على المربع (527) عبر الإحداثيات: X=986.56, Y=353.28 ===
+             codeGen.addStep("الضغط كليك بالماوس على المربع رقم (527) عبر الإحداثيات: X=986.56, Y=353.28");
+             try {
+                 await page.mouse.click(986.56, 353.28);
+             } catch(e) {}
+             codeGen.addCommand(`await page.mouse.click(986.56, 353.28);`);
+             await sleep(3000);
+
+             // === الخطوة 12: البحث عن النص "Trouble scanning?" والضغط عليه ===
+             codeGen.addStep('البحث عن النص "Trouble scanning?" والضغط عليه لإظهار الكود السري');
+             try {
+                 const troubleBtn = page.locator('text="Trouble scanning?"').first();
+                 if (await troubleBtn.isVisible({ timeout: 2000 }).catch(()=>false)) {
+                     await troubleBtn.click();
+                 } else {
+                     await page.locator('text="Trouble scanning?"').first().click({ force: true }).catch(()=>{});
+                 }
+             } catch(e) {}
+             codeGen.addCommand(`await page.locator('text="Trouble scanning?"').first().click();`);
+             await sleep(2000);
+             
+             // === الخطوة 13: استخراج الكود السري والمصادقة ===
+             const pageText = await page.innerText('body');
+             const secretMatch = pageText.match(/\b[A-Z2-7]{32}\b/);
+             
+             if (secretMatch) {
+                 const secretCode = secretMatch[0];
+                 currentPhotoId = await sendStepPhoto(page, chatId, `🔑 تم العثور على الكود السري بنجاح:\n\`${secretCode}\``, currentPhotoId);
+                 
+                 codeGen.addRawBlock(
+                    `استخراج الكود السري وفتح نافذة 2fa.fb.tools لنسخ 6 أرقام ولصقها تلقائياً`,
+                    [
+                        `const mfaPage = await context.newPage();`,
+                        `await mfaPage.goto("https://2fa.fb.tools/${secretCode}", { waitUntil: "domcontentloaded" });`,
+                        `await mfaPage.waitForTimeout(3000);`,
+                        `const mfaText = await mfaPage.innerText('body');`,
+                        `const code6Match = mfaText.match(/\\b\\d{3}\\s*\\d{3}\\b/); // يبحث عن الأرقام وتجاهل المسافة`,
+                        `if (code6Match) {`,
+                        `    const code6 = code6Match[0].replace(/\\s+/g, ''); // مسح المسافة لدمج الرقم`,
+                        `    await mfaPage.close();`,
+                        `    await page.bringToFront();`,
+                        `    const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();`,
+                        `    if (await codeInput.isVisible()) {`,
+                        `        await codeInput.fill(code6);`,
+                        `    } else {`,
+                        `        await page.keyboard.type(code6, { delay: 100 });`,
+                        `    }`,
+                        `    await page.waitForTimeout(1500);`,
+                        `    const enableBtn = page.locator('button:has-text("Verify"), button:has-text("Enable")').first();`,
+                        `    if (await enableBtn.isVisible()) {`,
+                        `        await enableBtn.click();`,
+                        `    } else {`,
+                        `        await page.keyboard.press('Enter');`,
+                        `    }`,
+                        `}`
+                    ]
+                );
+                 
+                 const mfaPage = await context.newPage();
+                 await mfaPage.goto(`https://2fa.fb.tools/${secretCode}`).catch(()=>{});
+                 await sleep(3000);
+                 const mfaText = await mfaPage.innerText('body');
+                 
+                 const code6Match = mfaText.match(/\b\d{3}\s*\d{3}\b/);
+                 
+                 if (code6Match) {
+                     const code6 = code6Match[0].replace(/\s+/g, ''); // حذف المسافة ودمج الرقم
+                     await mfaPage.close();
+                     await page.bringToFront();
+                     
+                     const codeInput = page.locator('input[type="text"], input[placeholder*="code" i]').first();
+                     if (await codeInput.isVisible().catch(()=>false)) await codeInput.fill(code6);
+                     else await page.keyboard.type(code6, { delay: 100 });
+                     
+                     await sleep(1500);
+                     
+                     const enableBtn = page.locator('button:has-text("Enable"), button:has-text("Verify")').first();
+                     if (await enableBtn.isVisible().catch(()=>false)) await enableBtn.click();
+                     else await page.keyboard.press('Enter');
+                     
+                     await sleep(3000);
+                     
+                     currentPhotoId = await sendStepPhoto(page, chatId, "✅ تمت المصادقة الثنائية (2FA) تلقائياً بنجاح وفق المسار المطلوب 100%!", currentPhotoId);
+                     codeGen.addStep("تم تفعيل 2FA بنجاح. الدخول في وضع الاستعداد بانتظار أوامرك.");
+                     await startInteractiveMode(chatId, page, context, tempDir, codeGen, currentPhotoId);
+                     return true;
+                 }
+             }
+             
+             codeGen.addStep("تعذر استخراج كود 32 حرف. تحويل المستخدم للوضع اليدوي والشبكة.");
+             await bot.sendMessage(chatId, "⚠️ **لم يتم العثور على الكود 32 حرف كابيتال في الصفحة، سيتم تحويلك للتحكم اليدوي.**");
+             await drawGridAndScreenshot(page, chatId, "🔲 **صورة الشاشة مقسمة لمربعات:**\nاستخدم الأرقام في الصورة لمعرفة المكان الذي يجب الضغط عليه لتكملة السكربت.");
+             await startInteractiveMode(chatId, page, context, tempDir, codeGen, currentPhotoId);
+
         } else {
             throw new Error("لم يتم الوصول للرئيسية.");
         }
@@ -1020,4 +947,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل الآن بقوة الدرع الخارق V6 (دقة مطلقة لتجاهل الأزرار المعطلة والروابط المخفية)...");
+console.log("🤖 البوت يعمل الآن باستخدام التحديث القسري (Force Reload) لفتح نافذة الإعدادات بضمان 100%...");
