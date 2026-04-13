@@ -12,7 +12,7 @@
  * - 💣 التحديث 8 (كاسحة النوافذ): مسح النوافذ الإعلانية (Skip Tour / Ask anything).
  * - 🎯 التحديث 9 (القناص): التعرف الفوري على شاشة "You're all set" الإجبارية واختراقها بضغط زر Continue!
  * - 🛠️ الإصلاح الشامل V10: حل جذري لمشكلة تعطل الوضع اليدوي واختفاء الصور، مع الاستغناء عن مكتبة Canvas، وتسريع الالتقاط عبر الذاكرة العشوائية!
- * - 📧 التحديث 12: تم دمج دومينات (1timetech) مع فك تشفير Reversed-Base64، وإضافة نظام اللوب لإنشاء عدة حسابات تلقائياً.
+ * - 📧 التحديث 13: تدمير كاش السيرفر (304 Not Modified) وإجبار الـ API على جلب رسالة الـ OTP بالقوة!
  * ==========================================================
  */
 
@@ -43,7 +43,7 @@ const userState = {};
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ================= إعدادات API المكتشفة وفك التشفير (1timetech) =================
-const CUSTOM_MAIL_API = 'https://mail-server.1timetech.com/api';
+const CUSTOM_MAIL_API = 'https://mail-server-2.1timetech.com/api';
 const CUSTOM_HEADERS = {
     "accept": "application/json",
     "x-app-key": "f07bed4503msh719c2010df3389fp1d6048jsn411a41a84a3c",
@@ -91,25 +91,41 @@ async function createCustomMail(domain) {
     }
 }
 
-// دالة فحص صندوق الوارد وانتظار الكود
+// دالة فحص صندوق الوارد (محمية ضد الكاش والتجمد)
 async function waitForCustomMailCode(emailId, chatId, maxWaitSeconds = 120) {
     const startTime = Date.now();
     while ((Date.now() - startTime) < maxWaitSeconds * 1000) {
-        if (userState[chatId]?.cancel || !autoLoopActive) throw new Error("CANCELLED_BY_USER");
+        if (userState[chatId]?.cancel || (!userState[chatId]?.isManual && !autoLoopActive)) throw new Error("CANCELLED_BY_USER");
         try {
-            const url = `${CUSTOM_MAIL_API}/email/${emailId}/messages?params=%3D03e&t=${Date.now()}`;
-            const res = await axios.get(url, { headers: CUSTOM_HEADERS });
+            const url = `${CUSTOM_MAIL_API}/email/${emailId}/messages?params=%3D03e`;
             
-            if (res.status === 200 && res.data.data) {
-                const messages = decodePayload(res.data.data) || [];
-                for (const msg of messages) {
-                    const text = JSON.stringify(msg);
-                    const match = text.match(/\b\d{6}\b/);
-                    if (match) return match[0];
+            const res = await axios.get(url, { 
+                headers: {
+                    ...CUSTOM_HEADERS,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate', // تدمير الكاش
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                },
+                validateStatus: () => true // قبول جميع الاستجابات (حتى 304) لمعالجتها يدوياً
+            });
+            
+            if (res.status === 200 && res.data && res.data.data) {
+                const decodedStr = Buffer.from(res.data.data.split('').reverse().join(''), 'base64').toString('utf-8');
+                const messages = JSON.parse(decodedStr);
+                
+                if (Array.isArray(messages) && messages.length > 0) {
+                    for (const msg of messages) {
+                        const text = JSON.stringify(msg);
+                        // البحث عن الكود (6 أرقام متتالية)
+                        const match = text.match(/\b\d{6}\b/);
+                        if (match) return match[0];
+                    }
                 }
             }
-        } catch(e) {}
-        await sleep(5000); // الفحص كل 5 ثواني
+        } catch(e) {
+            // تجاهل أخطاء الشبكة المؤقتة واستمرار المحاولة
+        }
+        await sleep(5000); // الفحص كل 5 ثواني لتخفيف الضغط على السيرفر
     }
     return null;
 }
@@ -322,7 +338,8 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             const mailData = await createCustomMail(manualData.domain); 
             email = mailData.email; 
             emailId = mailData.id;
-            chatGptPassword = mailData.password; // استخدام كلمة مرور البوت
+            chatGptPassword = mailData.password;
+            userState[chatId].isManual = false; // تسجيل الحالة
             await updateStatus(`تم إنشاء البريد: ${email}`);
         } catch (e) { 
             await bot.sendMessage(chatId, `❌ فشل إنشاء البريد`); 
@@ -401,7 +418,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 bot.on('message', listener);
             });
         } else { 
-            // استخدام دالة API الجديدة
+            // الانتظار مع كسر الكاش
             code = await waitForCustomMailCode(emailId, chatId, 120); 
         }
 
@@ -414,7 +431,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             codeGen.addCommand(`await page.keyboard.type("${code}");`);
             await sleep(2000);
         } else {
-            throw new Error(`تعذر استلام الكود من السيرفر بعد الانتظار.`);
+            throw new Error(`لم يصل الكود من OpenAI، ربما تم حظر الـ IP أو البريد المخصص.`);
         }
 
         const continueBtnAfterCode = page.locator('button:has-text("Continue")').last();
@@ -596,7 +613,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
              }
              
              await bot.sendMessage(chatId, "⚠️ **لم يتم العثور على الكود 32 حرف.**");
-             // إذا كنا في اللوب لا نفعل وضع التفاعل لتجنب التوقف
              if (!isManual && autoLoopActive) { throw new Error("MFA_FAILED"); }
              
              await drawGridAndScreenshot(page, chatId, "🔲 **صورة الشاشة مقسمة لمربعات:**");
@@ -611,7 +627,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
             return false;
         }
         
-        // منع التفاعل اليدوي إذا كنا داخل اللوب الأوتوماتيكي لتفادي التوقف
         if (isManual || !autoLoopActive) {
             if (userState[chatId]) userState[chatId].isInteractive = true;
             try { if (page && !page.isClosed()) await page.evaluate(() => window.stop()); } catch(e){}
@@ -627,7 +642,6 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         return false;
 
     } finally {
-        // الإغلاق يتم فقط إذا لم نكن في وضع التفاعل اليدوي
         if (userState[chatId] && !userState[chatId].isInteractive) {
             if (context) await context.close().catch(()=>{});
             try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
@@ -765,6 +779,7 @@ bot.on('message', async (msg) => {
             if (!text.includes('@')) return bot.sendMessage(chatId, "❌ إيميل غير صحيح."); 
             state.step = null; isProcessing = true; state.cancel = false;
             const autoPass = generateSecurePassword(); bot.sendMessage(chatId, `✅ تم استلام البريد.\n🔑 الباسورد: \`${autoPass}\``, {parse_mode: 'Markdown'});
+            userState[chatId].isManual = true; // تسجيل وضع اليدوي لمنع إنهاء اللوب بالخطأ
             await createAccountLogic(chatId, true, { email: text, password: autoPass });
             isProcessing = false; sendMainMenu(chatId);
         }
@@ -774,4 +789,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (تحديث V12: تم كسر تشفير 1timetech وإضافة لوب إنشاء الحسابات)...");
+console.log("🤖 البوت يعمل (تحديث V13: كسر حماية الـ Cache لاستقبال رسائل OpenAI بنجاح)...");
