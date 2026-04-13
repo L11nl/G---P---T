@@ -12,6 +12,7 @@
  * - 💣 التحديث 8 (كاسحة النوافذ): مسح النوافذ الإعلانية (Skip Tour / Ask anything).
  * - 🎯 التحديث 9 (القناص): التعرف الفوري على شاشة "You're all set" الإجبارية واختراقها بضغط زر Continue!
  * - 🛠️ الإصلاح الشامل V10: حل جذري لمشكلة تعطل الوضع اليدوي واختفاء الصور، مع الاستغناء عن مكتبة Canvas، وتسريع الالتقاط عبر الذاكرة العشوائية!
+ * - 📧 التحديث 11: دمج Temp-Mail.io مع كاسر الكاش (Cache-Buster) لالتقاط الـ OTP بنجاح!
  * ==========================================================
  */
 
@@ -38,7 +39,7 @@ const ACCOUNTS_FILE = 'accounts.txt';
 let isProcessing = false;
 
 const userState = {};
-// التحديث الجديد: استخدام temp-mail.io
+// إعدادات Temp-Mail.io
 const MAIL_API = 'https://api.internal.temp-mail.io';
 const TEMP_MAIL_HEADERS = {
     "accept": "application/json, text/plain, */*",
@@ -92,7 +93,7 @@ class PlaywrightCodeGenerator {
     }
 }
 
-// ================= دوال مساعدة لإنشاء البريد (تم تحديثها للـ API الجديد) =================
+// ================= دوال مساعدة لإنشاء البريد (Temp-Mail.io) =================
 function generateSecurePassword() {
     const chars = "00CHAT700z00";
     let password = "";
@@ -123,22 +124,37 @@ async function createMailTmAccount(chatId) {
     }
 }
 
-async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
+// دالة جلب الكود المحسنة (إلغاء الكاش + التقاط ذكي)
+async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 120) {
     const startTime = Date.now();
+    console.log(`[*] بدء فحص صندوق الوارد للإيميل: ${email}`);
+    
     while ((Date.now() - startTime) < maxWaitSeconds * 1000) {
         if (userState[chatId]?.cancel) throw new Error("CANCELLED_BY_USER");
+        
         try {
-            const res = await axios.get(`${MAIL_API}/api/v3/email/${email}/messages`, { headers: TEMP_MAIL_HEADERS });
+            // إضافة cache-buster (?t=timestamp) لضمان جلب نتيجة جديدة من السيرفر دائماً
+            const url = `${MAIL_API}/api/v3/email/${email}/messages?t=${Date.now()}`;
+            const res = await axios.get(url, { headers: TEMP_MAIL_HEADERS });
             const messages = res.data || [];
             
-            for (const msg of messages) {
-                // البحث عن الكود في العنوان أو النص
-                const textToSearch = `${msg.subject || ''} ${msg.body_text || ''}`;
-                const codeMatch = textToSearch.match(/\b\d{6}\b/);
-                if (codeMatch) return codeMatch[0];
+            if (Array.isArray(messages) && messages.length > 0) {
+                for (const msg of messages) {
+                    // تحويل كائن الرسالة بالكامل إلى نص للبحث العشوائي والقوي
+                    const fullText = JSON.stringify(msg);
+                    
+                    // استخراج 6 أرقام متتالية
+                    const codeMatch = fullText.match(/\b(\d{6})\b/);
+                    if (codeMatch) {
+                        console.log(`[+] تم العثور على الكود بنجاح: ${codeMatch[1]}`);
+                        return codeMatch[1];
+                    }
+                }
             }
-        } catch(e) {}
-        await sleep(4000); // الفحص كل 4 ثواني
+        } catch(e) {
+            console.log(`[!] خطأ أثناء فحص الرسائل: ${e.message}`);
+        }
+        await sleep(5000); // الفحص كل 5 ثواني
     }
     return null;
 }
@@ -169,7 +185,6 @@ async function updateStatusMessage(chatId, text, messageId = null) {
 async function sendErrorScreenshot(page, chatId, errorMessage) {
     try {
         if (!page || page.isClosed()) throw new Error("المتصفح انغلق فجأة.");
-        // مهلة 15 ثانية لمنع تجمد البوت
         const buffer = await page.screenshot({ fullPage: false, timeout: 15000 });
         const shortMsg = errorMessage.length > 150 ? errorMessage.substring(0, 150) + "..." : errorMessage;
         await bot.sendPhoto(chatId, buffer, { caption: `⚠️ **توقف مؤقت للحماية:**\nتغير مفاجئ في واجهة الموقع، تم تفعيل التحكم اليدوي.\nالسبب: ${shortMsg}` }, { filename: 'error.png', contentType: 'image/png' });
@@ -178,7 +193,7 @@ async function sendErrorScreenshot(page, chatId, errorMessage) {
     }
 }
 
-// ================= أنظمة المربعات الشفافة الدقيقة (بدون Canvas عبر DOM Injection) =================
+// ================= أنظمة المربعات الشفافة الدقيقة =================
 const GRID_COLS = 45; 
 const GRID_ROWS = 25; 
 const TOTAL_CELLS = GRID_COLS * GRID_ROWS; 
@@ -187,7 +202,6 @@ async function drawGridAndScreenshot(page, chatId, caption) {
     try {
         if (!page || page.isClosed()) throw new Error("الصفحة مغلقة");
         
-        // رسم المربعات برمجياً باستخدام المتصفح نفسه (لا نحتاج لـ Canvas بعد اليوم)
         await page.evaluate((specs) => {
             const oldOverlay = document.getElementById('bot-grid-overlay');
             if (oldOverlay) oldOverlay.remove();
@@ -206,7 +220,6 @@ async function drawGridAndScreenshot(page, chatId, caption) {
 
         const buffer = await page.screenshot({ fullPage: false, timeout: 15000 });
 
-        // إزالة المربعات فور التقاط الصورة كي لا تزعجك لاحقاً
         await page.evaluate(() => {
             const el = document.getElementById('bot-grid-overlay');
             if (el) el.remove();
@@ -264,7 +277,6 @@ async function startInteractiveMode(chatId, page, context, tempDir, codeGen) {
     
     return new Promise(resolve => { 
         userState[chatId].resolveInteractive = resolve; 
-        // مؤقت إغلاق تلقائي 15 دقيقة لمنع استنزاف موارد السيرفر
         setTimeout(() => {
             if (userState[chatId] && userState[chatId].isInteractive) {
                 bot.sendMessage(chatId, "⏳ انتهت مهلة التحكم اليدوي (15 دقيقة). تم إنهاء الجلسة التفاعلية تلقائياً للحفاظ على الموارد.");
@@ -297,6 +309,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
     if (isManual) { email = manualData.email; } else {
         try {
             const mailData = await createMailTmAccount(chatId); email = mailData.email; mailToken = mailData.token;
+            await updateStatus(`تم إنشاء البريد: ${email}`);
         } catch (e) { await bot.sendMessage(chatId, `❌ فشل إنشاء البريد`); return false; }
     }
 
@@ -361,7 +374,7 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
         await sleep(7000); 
 
         checkCancel();
-        await updateStatus("في انتظار صفحة الكود...");
+        await updateStatus("في انتظار صفحة الكود (OTP)...");
         
         let code = null;
         if (isManual) {
@@ -370,15 +383,21 @@ async function createAccountLogic(chatId, isManual, manualData = null) {
                 const listener = (msg) => { if (msg.chat.id === chatId && /^\d{6}$/.test(msg.text?.trim())) { bot.removeListener('message', listener); resolve(msg.text.trim()); } };
                 bot.on('message', listener);
             });
-        } else { code = await waitForMailTmCode(email, mailToken, chatId, 100); }
+        } else { 
+            // استخدام دالة جلب الكود المحسنة (التي تمنع الكاش)
+            code = await waitForMailTmCode(email, mailToken, chatId, 120); 
+        }
 
         if (code) {
+            await updateStatus(`جاري إدخال الكود: ${code}`);
             codeGen.addStep("إدخال كود التحقق (OTP)");
             const codeInput = page.getByRole("textbox", { name: "Code" });
             await codeInput.waitFor({ state: 'visible', timeout: 15000 }).catch(async () => { await page.keyboard.type(code); });
             if (await codeInput.isVisible().catch(()=>false)) await codeInput.fill(code);
             codeGen.addCommand(`await page.keyboard.type("${code}");`);
             await sleep(2000);
+        } else {
+            throw new Error(`تعذر استلام الكود من السيرفر بعد انتظار دقيقتين.`);
         }
 
         const continueBtnAfterCode = page.locator('button:has-text("Continue")').last();
@@ -896,4 +915,4 @@ bot.on('message', async (msg) => {
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (تحديث V10: حماية متقدمة للوضع اليدوي وصور من الذاكرة)...");
+console.log("🤖 البوت يعمل (تحديث V11: تم دمج كاسر الكاش لضمان وصول الـ OTP)...");
