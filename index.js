@@ -38,7 +38,16 @@ const ACCOUNTS_FILE = 'accounts.txt';
 let isProcessing = false;
 
 const userState = {};
-const MAIL_API = 'https://api.mail.tm';
+// التحديث الجديد: استخدام temp-mail.io
+const MAIL_API = 'https://api.internal.temp-mail.io';
+const TEMP_MAIL_HEADERS = {
+    "accept": "application/json, text/plain, */*",
+    "application-name": "web",
+    "application-version": "2.2.29",
+    "user-agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.80 Mobile Safari/537.36",
+    "origin": "https://temp-mail.io",
+    "referer": "https://temp-mail.io/"
+};
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ================= نظام توليد كود Playwright التحليلي المطور =================
@@ -83,7 +92,7 @@ class PlaywrightCodeGenerator {
     }
 }
 
-// ================= دوال مساعدة لإنشاء البريد =================
+// ================= دوال مساعدة لإنشاء البريد (تم تحديثها للـ API الجديد) =================
 function generateSecurePassword() {
     const chars = "00CHAT700z00";
     let password = "";
@@ -93,16 +102,25 @@ function generateSecurePassword() {
 
 async function createMailTmAccount(chatId) {
     try {
-        const domainsRes = await axios.get(`${MAIL_API}/domains`);
-        const domains = domainsRes.data['hydra:member'] || [];
-        const domain = domains[Math.floor(Math.random() * domains.length)].domain;
+        const domainsRes = await axios.get(`${MAIL_API}/api/v4/domains`, { headers: TEMP_MAIL_HEADERS });
+        const domainsList = domainsRes.data.domains || [];
+        if (domainsList.length === 0) throw new Error('لا توجد نطاقات متاحة');
+        
+        const domain = domainsList[Math.floor(Math.random() * domainsList.length)].name;
         const username = faker.person.firstName().toLowerCase() + crypto.randomBytes(2).toString('hex');
-        const email = `${username}@${domain}`;
-        const password = generateSecurePassword();
-        await axios.post(`${MAIL_API}/accounts`, { address: email, password: password });
-        const tokenRes = await axios.post(`${MAIL_API}/token`, { address: email, password: password });
-        return { email, password, token: tokenRes.data.token };
-    } catch (error) { throw new Error('تعذر إنشاء بريد مؤقت'); }
+        
+        const payload = { domain: domain, name: username };
+        const createRes = await axios.post(`${MAIL_API}/api/v3/email/new`, payload, { headers: TEMP_MAIL_HEADERS });
+        
+        const email = createRes.data.email;
+        const token = createRes.data.token;
+        const password = generateSecurePassword(); 
+        
+        return { email, password, token };
+    } catch (error) { 
+        console.error(error);
+        throw new Error('تعذر إنشاء بريد مؤقت'); 
+    }
 }
 
 async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
@@ -110,14 +128,17 @@ async function waitForMailTmCode(email, token, chatId, maxWaitSeconds = 90) {
     while ((Date.now() - startTime) < maxWaitSeconds * 1000) {
         if (userState[chatId]?.cancel) throw new Error("CANCELLED_BY_USER");
         try {
-            const res = await axios.get(`${MAIL_API}/messages`, { headers: { Authorization: `Bearer ${token}` } });
-            const messages = res.data['hydra:member'] || [];
+            const res = await axios.get(`${MAIL_API}/api/v3/email/${email}/messages`, { headers: TEMP_MAIL_HEADERS });
+            const messages = res.data || [];
+            
             for (const msg of messages) {
-                const codeMatch = `${msg.subject || ''} ${msg.intro || ''}`.match(/\b\d{6}\b/);
+                // البحث عن الكود في العنوان أو النص
+                const textToSearch = `${msg.subject || ''} ${msg.body_text || ''}`;
+                const codeMatch = textToSearch.match(/\b\d{6}\b/);
                 if (codeMatch) return codeMatch[0];
             }
         } catch(e) {}
-        await sleep(4000);
+        await sleep(4000); // الفحص كل 4 ثواني
     }
     return null;
 }
