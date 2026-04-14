@@ -12,7 +12,7 @@ ChatGPT 2FA Automator & Playwright Script Generator
 💣 التحديث 8 (كاسحة النوافذ): مسح النوافذ الإعلانية (Skip Tour / Ask anything).
 🎯 التحديث 9 (القناص): التعرف الفوري على شاشة "You're all set" الإجبارية واختراقها بضغط زر Continue!
 🛠️ الإصلاح الشامل V10: حل جذري لمشكلة تعطل الوضع اليدوي واختفاء الصور، مع الاستغناء عن مكتبة Canvas، وتسريع الالتقاط عبر الذاكرة العشوائية!
-🔥 التحديث 11 (تغيير الايميل): نظام تغيير الإيميل بالإحداثيات المليمترية مع توثيق حي بالصور (Screenshots)، وزر التدخل اليدوي وقت الحاجة!
+🔥 التحديث 11 (تغيير الايميل الذكي): مسار آلي سلس لتغيير الإيميل يكمل العمل دون توقف + كاميرا مراقبة حية تصور كل شيء + نظام مقاطعة (Interrupt) لزر "التدخل اليدوي" الفوري!
 ==========================================================
 */
 
@@ -106,75 +106,89 @@ await sleep(4000);
 return null;
 }
 
-// ================= دالة انتظار إدخال المستخدم الذكية (تدعم التدخل اليدوي) =================
+// ================= نظام الانتظار الذكي (يدعم إيقاف البوت لتفعيل التدخل اليدوي) =================
+const interruptibleSleep = async (chatId, ms) => {
+    const iterations = Math.max(1, Math.floor(ms / 200));
+    for (let i = 0; i < iterations; i++) {
+        if (userState[chatId]?.manualOverride) throw new Error("MANUAL_MODE_REQUESTED");
+        if (userState[chatId]?.cancel) throw new Error("CANCELLED_BY_USER");
+        await new Promise(r => setTimeout(r, 200));
+    }
+};
+
 function waitForUserInput(chatId, promptText) {
     return new Promise(async (resolve, reject) => {
-        const opts = {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '⚙️ التدخل اليدوي (إيقاف البوت)', callback_data: 'trigger_manual' }],
-                    [{ text: '🛑 إلغاء العملية', callback_data: 'cancel_input' }]
-                ]
-            }
-        };
-        const sentMsg = await bot.sendMessage(chatId, promptText, opts);
+        let sentMsg;
+        try {
+            sentMsg = await bot.sendMessage(chatId, promptText, {
+                reply_markup: { inline_keyboard: [[{ text: '⚙️ التدخل اليدوي', callback_data: 'trigger_manual' }]] }
+            });
+        } catch(e){}
         
-        userState[chatId].resolveInput = resolve;
-        userState[chatId].rejectInput = reject;
-
         const listener = (msg) => {
             if (msg.chat.id === chatId && msg.text) {
-                if (userState[chatId].resolveInput) {
-                    if (msg.text === '/start') {
-                        cleanup();
-                        reject(new Error("CANCELLED_BY_USER"));
-                    } else {
-                        cleanup();
-                        resolve(msg.text.trim());
-                    }
+                if (msg.text.startsWith('/')) {
+                    if (msg.text === '/start') { cleanup(); reject(new Error("CANCELLED_BY_USER")); }
+                    return; // تجاهل الأوامر الأخرى
                 }
+                cleanup();
+                resolve(msg.text.trim());
             }
         };
         bot.on('message', listener);
-        userState[chatId].inputMsgListener = listener;
-
+        
         const interval = setInterval(() => {
+            if (userState[chatId]?.manualOverride) {
+                cleanup();
+                reject(new Error("MANUAL_MODE_REQUESTED"));
+            }
             if (userState[chatId]?.cancel) {
                 cleanup();
                 reject(new Error("CANCELLED_BY_USER"));
             }
-        }, 1000);
-        userState[chatId].inputInterval = interval;
+        }, 300); // يفحص كل 300 جزء من الثانية لسرعة الاستجابة للتدخل اليدوي
         
         function cleanup() {
-            if (userState[chatId].inputMsgListener) bot.removeListener('message', userState[chatId].inputMsgListener);
-            clearInterval(userState[chatId].inputInterval);
-            userState[chatId].resolveInput = null;
-            userState[chatId].rejectInput = null;
-            bot.deleteMessage(chatId, sentMsg.message_id).catch(()=>{});
+            bot.removeListener('message', listener);
+            clearInterval(interval);
+            if (sentMsg) bot.deleteMessage(chatId, sentMsg.message_id).catch(()=>{});
         }
     });
 }
 
-// ================= دالة تغيير الإيميل الجديدة (مع التصوير والتدخل اليدوي) =================
+// ================= دالة تغيير الإيميل التلقائية الكاملة مع التصوير الحي =================
 async function changeEmailLogic(chatId) {
-    userState[chatId] = { step: null, cancel: false, isInteractive: false };
-    const codeGen = new PlaywrightCodeGenerator(); // لتسجيل الحركات واستخراجها لاحقاً
+    userState[chatId] = { step: null, cancel: false, isInteractive: false, manualOverride: false };
+    const codeGen = new PlaywrightCodeGenerator(); 
     const tempDir = fs.mkdtempSync(path.join(__dirname, 'ce_wrk_'));
     let context, page;
 
-    // كاميرا التصوير اللحظي
+    // دالة تحقق من طلب التدخل اليدوي
+    const checkState = () => {
+        if (userState[chatId]?.cancel) throw new Error("CANCELLED_BY_USER");
+        if (userState[chatId]?.manualOverride) throw new Error("MANUAL_MODE_REQUESTED");
+    };
+
+    // دالة التصوير وإرسال اللقطة لك (مرفق بها زر التدخل اليدوي)
     const snapAndSend = async (captionText) => {
+        checkState();
         try {
             if (page && !page.isClosed()) {
                 const buffer = await page.screenshot({ fullPage: false, timeout: 15000 });
-                await bot.sendPhoto(chatId, buffer, { caption: `📸 ${captionText}` }, { filename: 'step.png', contentType: 'image/png' });
+                const opts = {
+                    caption: `📸 ${captionText}`,
+                    reply_markup: {
+                        inline_keyboard: [[{ text: '⚙️ التدخل اليدوي', callback_data: 'trigger_manual' }]]
+                    }
+                };
+                await bot.sendPhoto(chatId, buffer, opts, { filename: 'step.png', contentType: 'image/png' });
             }
         } catch(e) {}
+        checkState();
     };
 
     try {
-        await bot.sendMessage(chatId, "🔄 جاري تهيئة المتصفح لبدء تغيير الإيميل...");
+        await bot.sendMessage(chatId, "🔄 السكربت انطلق! سيتم العمل تلقائياً وسأرسل لك توثيقاً بالصور..\nبإمكانك الضغط على زر التدخل اليدوي في أي وقت لإيقاف البوت فوراً.");
         
         context = await chromium.launchPersistentContext(tempDir, {
             headless: true,
@@ -183,8 +197,9 @@ async function changeEmailLogic(chatId) {
         });
         page = await context.newPage();
 
+        checkState();
         await page.goto("https://chatgpt.com/login", { waitUntil: "domcontentloaded", timeout: 60000 });
-        await sleep(3000);
+        await interruptibleSleep(chatId, 3000);
         await snapAndSend("تم فتح صفحة تسجيل الدخول.");
 
         try {
@@ -194,90 +209,97 @@ async function changeEmailLogic(chatId) {
         } catch(e) {
             await page.mouse.click(129.99, 858.00);
         }
-        await sleep(2000);
+        await interruptibleSleep(chatId, 2000);
         await snapAndSend("تم الضغط على Log in.");
 
         const email = await waitForUserInput(chatId, "📧 البوت: قم بأرسال الايميل");
+        checkState();
         await page.keyboard.type(email, { delay: 50 });
-        await sleep(1000);
+        await interruptibleSleep(chatId, 1000);
         
         try { await page.locator('button:has-text("Continue")').first().click({timeout: 2000}); }
         catch(e) { await page.mouse.click(720.00, 671.50); }
-        await sleep(3000);
+        await interruptibleSleep(chatId, 3000);
         await snapAndSend("تم إدخال الإيميل والضغط على Continue.");
 
         const password = await waitForUserInput(chatId, "🔑 البوت: ارسل الباسورد");
+        checkState();
         await page.keyboard.type(password, { delay: 50 });
-        await sleep(1000);
+        await interruptibleSleep(chatId, 1000);
         
         try { await page.locator('button:has-text("Continue")').first().click({timeout: 2000}); }
         catch(e) { await page.mouse.click(720.00, 405.00); }
-        await sleep(4000);
+        await interruptibleSleep(chatId, 4000);
         await snapAndSend("تم إدخال الباسورد والضغط على Continue.");
 
         const code = await waitForUserInput(chatId, "🔐 البوت: قم بأرسال الكود");
+        checkState();
         await page.keyboard.type(code, { delay: 50 });
-        await sleep(1000);
+        await interruptibleSleep(chatId, 1000);
 
         try { await page.locator('button:has-text("Continue")').first().click({timeout: 2000}); }
         catch(e) { await page.mouse.click(720.00, 369.00); }
         
-        await bot.sendMessage(chatId, "⏳ انتظار 3 ثواني للتحويل...");
-        await sleep(3000);
-        await snapAndSend("تم إدخال كود المصادقة بنجاح.");
+        await interruptibleSleep(chatId, 3000);
+        await snapAndSend("تم إدخال الكود بنجاح. تحويل للصفحة...");
 
+        checkState();
         await page.goto("https://chatgpt.com/#settings/Account", { waitUntil: "domcontentloaded", timeout: 60000 });
-        await sleep(5000);
-        await snapAndSend("تم التوجه إلى صفحة إعدادات الحساب.");
+        await interruptibleSleep(chatId, 5000);
+        await snapAndSend("تم فتح صفحة إعدادات الحساب.");
 
+        checkState();
         // الضغط على شبكة الماوس 317
         await page.mouse.click(950.40, 281.25);
-        await sleep(2000);
+        await interruptibleSleep(chatId, 2000);
 
         // الضغط على شبكة الماوس 511
         await page.mouse.click(604.80, 461.25);
-        await sleep(2000);
-        await snapAndSend("فتح حقل إدخال الإيميل الجديد للتعديل.");
+        await interruptibleSleep(chatId, 2000);
+        await snapAndSend("تم تجهيز حقل الإيميل الجديد للتعديل.");
 
         const newEmail = await waitForUserInput(chatId, "📩 البوت: قم بأرسال الايميل الجديد");
+        checkState();
         await page.keyboard.type(newEmail, { delay: 50 });
-        await sleep(1000);
+        await interruptibleSleep(chatId, 1000);
 
         // Send verification email
         try { await page.locator('button:has-text("Send verification email")').first().click({timeout: 2000}); }
         catch(e) { await page.mouse.click(836.39, 544.77); }
-        await sleep(3000);
+        await interruptibleSleep(chatId, 3000);
         await snapAndSend("تم إرسال كود التفعيل للإيميل الجديد.");
 
+        checkState();
         // الضغط على شبكة الماوس 536
         await page.mouse.click(604.80, 483.75);
-        await sleep(2000);
+        await interruptibleSleep(chatId, 2000);
 
         const verifyCode = await waitForUserInput(chatId, "💬 البوت: قم بأرسال الكود");
+        checkState();
         await page.keyboard.type(verifyCode, { delay: 50 });
-        await sleep(1000);
+        await interruptibleSleep(chatId, 1000);
 
         // Verify
         try { await page.locator('button:has-text("Verify")').first().click({timeout: 2000}); }
         catch(e) { await page.mouse.click(889.36, 601.44); }
-        await sleep(3000);
-        await snapAndSend("تم تأكيد الكود بنجاح والتحقق من الإيميل!");
+        await interruptibleSleep(chatId, 3000);
+        await snapAndSend("✅ تم تأكيد الكود بنجاح والتحقق من الإيميل!");
 
-        await bot.sendMessage(chatId, "✅ **تم تغيير الإيميل بنجاح!**", { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, "✅ **اكتمل تغيير الإيميل بنجاح بشكل آلي!**", { parse_mode: 'Markdown' });
 
     } catch (error) {
         if (error.message === "CANCELLED_BY_USER") {
             bot.sendMessage(chatId, "🛑 تم إلغاء العملية.");
         } else {
-            // ================== نظام التحويل للوضع اليدوي ==================
+            // ================== نظام التحويل للوضع اليدوي التفاعلي ==================
             userState[chatId].isInteractive = true;
             try { if (page && !page.isClosed()) await page.evaluate(() => window.stop()); } catch(e){}
             
             let reason = error.message === "MANUAL_MODE_REQUESTED" 
                 ? "قمت أنت بطلب التدخل اليدوي ⚙️." 
-                : `خطأ أثناء العملية: ${error.message} ⚠️`;
+                : `حدث خطأ أو تغيير بالموقع: ${error.message} ⚠️`;
 
-            await bot.sendMessage(chatId, `⚠️ **تم تفعيل وضع التحكم اليدوي!**\nالسبب: ${reason}\n\nيمكنك الآن إكمال المهمة يدوياً عبر القوائم والأزرار أدناه متى ما انتهيت أرسل السكربت/المود لي!`);
+            await bot.sendMessage(chatId, `⚠️ **تم إيقاف الروبوت وتفعيل التحكم اليدوي!**\nالسبب: ${reason}\n\nيمكنك إكمال المهام يدوياً من النقطة التي توقفنا عندها.`);
             
             if (page && context && !userState[chatId].cancel) {
                 if (error.message !== "MANUAL_MODE_REQUESTED") {
@@ -285,7 +307,7 @@ async function changeEmailLogic(chatId) {
                 }
                 await drawGridAndScreenshot(page, chatId, "🔲 **صورة الشاشة مقسمة لمربعات (وضع التدخل اليدوي):**");
                 await startInteractiveMode(chatId, page, context, tempDir, codeGen);
-                return; // نوقف عملية الإغلاق لتسمح للوضع اليدوي بالعمل
+                return; // يمنع إغلاق المتصفح حتى تنهي عملك اليدوي
             } else {
                 bot.sendMessage(chatId, `⚠️ فشل التحويل للوضع اليدوي، المتصفح مغلق.`);
                 isProcessing = false;
@@ -323,14 +345,13 @@ return sent.message_id;
 }
 }
 
-// ================= إرسال صورة للخطأ (مُحدَّث للذاكرة Memory Buffer) =================
+// ================= إرسال صورة للخطأ =================
 async function sendErrorScreenshot(page, chatId, errorMessage) {
 try {
 if (!page || page.isClosed()) throw new Error("المتصفح انغلق فجأة.");
-// مهلة 15 ثانية لمنع تجمد البوت
 const buffer = await page.screenshot({ fullPage: false, timeout: 15000 });
 const shortMsg = errorMessage.length > 150 ? errorMessage.substring(0, 150) + "..." : errorMessage;
-await bot.sendPhoto(chatId, buffer, { caption: `⚠️ **توقف مؤقت للحماية:**\nتغير مفاجئ في واجهة الموقع، تم تفعيل التحكم اليدوي.\nالسبب: ${shortMsg}` }, { filename: 'error.png', contentType: 'image/png' });
+await bot.sendPhoto(chatId, buffer, { caption: `⚠️ **توقف مؤقت للحماية:**\nالسبب: ${shortMsg}` }, { filename: 'error.png', contentType: 'image/png' });
 } catch (err) {
 await bot.sendMessage(chatId, `❌ **توقف مؤقت:** ${errorMessage}\n(تعذر التقاط صورة للشاشة: ${err.message})`);
 }
@@ -418,7 +439,7 @@ isProcessing = false; resolve();
 }); 
 }
 
-// ================= الدالة الرئيسية =================
+// ================= الدالة الرئيسية (إنشاء حساب) =================
 async function createAccountLogic(chatId, isManual, manualData = null) {
 let modeText = isManual ? "(يدوي)" : "(تلقائي)";
 let statusMsgID = null;
@@ -761,13 +782,11 @@ if (!userState[chatId]) userState[chatId] = { step: null, cancel: false, isInter
 const state = userState[chatId];
 
 try { 
-// أزرار الانتظار الخاصة بتغيير الإيميل
+// زر المقاطعة للتدخل اليدوي الفوري
 if (query.data === 'trigger_manual') {
+    bot.sendMessage(chatId, "⚙️ تم استلام أمر التدخل اليدوي، جاري إيقاف السكربت التلقائي والتبديل فوراً...");
+    state.manualOverride = true;
     if (state.rejectInput) state.rejectInput(new Error("MANUAL_MODE_REQUESTED"));
-    return;
-}
-if (query.data === 'cancel_input') {
-    if (state.rejectInput) state.rejectInput(new Error("CANCELLED_BY_USER"));
     return;
 }
 
@@ -867,7 +886,7 @@ state.step = 'awaiting_email'; bot.sendMessage(chatId, "➡️ أرسل **الإ
 } else if (query.data === 'change_email') {
 if (isProcessing) return bot.sendMessage(chatId, "⚠️ البوت مشغول.");
 isProcessing = true;
-userState[chatId].cancel = false;
+userState[chatId] = { step: null, cancel: false, isInteractive: false, manualOverride: false };
 changeEmailLogic(chatId);
 }
 } catch(err) { bot.sendMessage(chatId, `❌ حدث خطأ داخلي: ${err.message}`); } 
@@ -917,4 +936,4 @@ await createAccountLogic(chatId, true, { email: text, password: autoPass });
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (تحديث تغيير الإيميل + كاميرا لحظية + زر التدخل اليدوي جاهز!)...");
+console.log("🤖 البوت يعمل (تحديث تغيير الإيميل + تصوير حي + مقاطعة التدخل اليدوي الذكية!)...");
