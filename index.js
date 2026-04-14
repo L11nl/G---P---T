@@ -12,7 +12,7 @@ ChatGPT 2FA Automator & Playwright Script Generator
 💣 التحديث 8 (كاسحة النوافذ): مسح النوافذ الإعلانية (Skip Tour / Ask anything).
 🎯 التحديث 9 (القناص): التعرف الفوري على شاشة "You're all set" الإجبارية واختراقها بضغط زر Continue!
 🛠️ الإصلاح الشامل V10: حل جذري لمشكلة تعطل الوضع اليدوي واختفاء الصور، مع الاستغناء عن مكتبة Canvas، وتسريع الالتقاط عبر الذاكرة العشوائية!
-🔥 التحديث الجديد (تغيير الايميل): إضافة زر لتغيير الإيميل آلياً بالتفاعل المباشر مع البوت وبالاعتماد على إحداثيات الماوس.
+🔥 التحديث 11 (تغيير الايميل): نظام تغيير الإيميل بالإحداثيات المليمترية مع توثيق حي بالصور (Screenshots)، وزر التدخل اليدوي وقت الحاجة!
 ==========================================================
 */
 
@@ -106,42 +106,72 @@ await sleep(4000);
 return null;
 }
 
-// ================= دالة انتظار إدخال المستخدم للعمليات التفاعلية =================
+// ================= دالة انتظار إدخال المستخدم الذكية (تدعم التدخل اليدوي) =================
 function waitForUserInput(chatId, promptText) {
     return new Promise(async (resolve, reject) => {
-        await bot.sendMessage(chatId, promptText);
+        const opts = {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '⚙️ التدخل اليدوي (إيقاف البوت)', callback_data: 'trigger_manual' }],
+                    [{ text: '🛑 إلغاء العملية', callback_data: 'cancel_input' }]
+                ]
+            }
+        };
+        const sentMsg = await bot.sendMessage(chatId, promptText, opts);
         
+        userState[chatId].resolveInput = resolve;
+        userState[chatId].rejectInput = reject;
+
         const listener = (msg) => {
             if (msg.chat.id === chatId && msg.text) {
-                cleanup();
-                if (msg.text === '/start' || msg.text === '🛑 إلغاء العملية') {
-                    reject(new Error("CANCELLED_BY_USER"));
-                } else {
-                    resolve(msg.text.trim());
+                if (userState[chatId].resolveInput) {
+                    if (msg.text === '/start') {
+                        cleanup();
+                        reject(new Error("CANCELLED_BY_USER"));
+                    } else {
+                        cleanup();
+                        resolve(msg.text.trim());
+                    }
                 }
             }
         };
         bot.on('message', listener);
-        
+        userState[chatId].inputMsgListener = listener;
+
         const interval = setInterval(() => {
             if (userState[chatId]?.cancel) {
                 cleanup();
                 reject(new Error("CANCELLED_BY_USER"));
             }
         }, 1000);
+        userState[chatId].inputInterval = interval;
         
         function cleanup() {
-            bot.removeListener('message', listener);
-            clearInterval(interval);
+            if (userState[chatId].inputMsgListener) bot.removeListener('message', userState[chatId].inputMsgListener);
+            clearInterval(userState[chatId].inputInterval);
+            userState[chatId].resolveInput = null;
+            userState[chatId].rejectInput = null;
+            bot.deleteMessage(chatId, sentMsg.message_id).catch(()=>{});
         }
     });
 }
 
-// ================= دالة تغيير الإيميل الجديدة =================
+// ================= دالة تغيير الإيميل الجديدة (مع التصوير والتدخل اليدوي) =================
 async function changeEmailLogic(chatId) {
     userState[chatId] = { step: null, cancel: false, isInteractive: false };
+    const codeGen = new PlaywrightCodeGenerator(); // لتسجيل الحركات واستخراجها لاحقاً
     const tempDir = fs.mkdtempSync(path.join(__dirname, 'ce_wrk_'));
     let context, page;
+
+    // كاميرا التصوير اللحظي
+    const snapAndSend = async (captionText) => {
+        try {
+            if (page && !page.isClosed()) {
+                const buffer = await page.screenshot({ fullPage: false, timeout: 15000 });
+                await bot.sendPhoto(chatId, buffer, { caption: `📸 ${captionText}` }, { filename: 'step.png', contentType: 'image/png' });
+            }
+        } catch(e) {}
+    };
 
     try {
         await bot.sendMessage(chatId, "🔄 جاري تهيئة المتصفح لبدء تغيير الإيميل...");
@@ -149,12 +179,13 @@ async function changeEmailLogic(chatId) {
         context = await chromium.launchPersistentContext(tempDir, {
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
-            viewport: { width: 1440, height: 900 } // مقاس الشاشة الخاص بالتقرير الدقيق
+            viewport: { width: 1440, height: 900 }
         });
         page = await context.newPage();
 
         await page.goto("https://chatgpt.com/login", { waitUntil: "domcontentloaded", timeout: 60000 });
         await sleep(3000);
+        await snapAndSend("تم فتح صفحة تسجيل الدخول.");
 
         try {
             const loginBtn = page.locator('button:has-text("Log in"), a:has-text("Log in"), [data-testid="login-button"]').first();
@@ -164,6 +195,7 @@ async function changeEmailLogic(chatId) {
             await page.mouse.click(129.99, 858.00);
         }
         await sleep(2000);
+        await snapAndSend("تم الضغط على Log in.");
 
         const email = await waitForUserInput(chatId, "📧 البوت: قم بأرسال الايميل");
         await page.keyboard.type(email, { delay: 50 });
@@ -172,6 +204,7 @@ async function changeEmailLogic(chatId) {
         try { await page.locator('button:has-text("Continue")').first().click({timeout: 2000}); }
         catch(e) { await page.mouse.click(720.00, 671.50); }
         await sleep(3000);
+        await snapAndSend("تم إدخال الإيميل والضغط على Continue.");
 
         const password = await waitForUserInput(chatId, "🔑 البوت: ارسل الباسورد");
         await page.keyboard.type(password, { delay: 50 });
@@ -180,6 +213,7 @@ async function changeEmailLogic(chatId) {
         try { await page.locator('button:has-text("Continue")').first().click({timeout: 2000}); }
         catch(e) { await page.mouse.click(720.00, 405.00); }
         await sleep(4000);
+        await snapAndSend("تم إدخال الباسورد والضغط على Continue.");
 
         const code = await waitForUserInput(chatId, "🔐 البوت: قم بأرسال الكود");
         await page.keyboard.type(code, { delay: 50 });
@@ -190,9 +224,11 @@ async function changeEmailLogic(chatId) {
         
         await bot.sendMessage(chatId, "⏳ انتظار 3 ثواني للتحويل...");
         await sleep(3000);
+        await snapAndSend("تم إدخال كود المصادقة بنجاح.");
 
         await page.goto("https://chatgpt.com/#settings/Account", { waitUntil: "domcontentloaded", timeout: 60000 });
         await sleep(5000);
+        await snapAndSend("تم التوجه إلى صفحة إعدادات الحساب.");
 
         // الضغط على شبكة الماوس 317
         await page.mouse.click(950.40, 281.25);
@@ -201,6 +237,7 @@ async function changeEmailLogic(chatId) {
         // الضغط على شبكة الماوس 511
         await page.mouse.click(604.80, 461.25);
         await sleep(2000);
+        await snapAndSend("فتح حقل إدخال الإيميل الجديد للتعديل.");
 
         const newEmail = await waitForUserInput(chatId, "📩 البوت: قم بأرسال الايميل الجديد");
         await page.keyboard.type(newEmail, { delay: 50 });
@@ -210,6 +247,7 @@ async function changeEmailLogic(chatId) {
         try { await page.locator('button:has-text("Send verification email")').first().click({timeout: 2000}); }
         catch(e) { await page.mouse.click(836.39, 544.77); }
         await sleep(3000);
+        await snapAndSend("تم إرسال كود التفعيل للإيميل الجديد.");
 
         // الضغط على شبكة الماوس 536
         await page.mouse.click(604.80, 483.75);
@@ -223,6 +261,7 @@ async function changeEmailLogic(chatId) {
         try { await page.locator('button:has-text("Verify")').first().click({timeout: 2000}); }
         catch(e) { await page.mouse.click(889.36, 601.44); }
         await sleep(3000);
+        await snapAndSend("تم تأكيد الكود بنجاح والتحقق من الإيميل!");
 
         await bot.sendMessage(chatId, "✅ **تم تغيير الإيميل بنجاح!**", { parse_mode: 'Markdown' });
 
@@ -230,13 +269,35 @@ async function changeEmailLogic(chatId) {
         if (error.message === "CANCELLED_BY_USER") {
             bot.sendMessage(chatId, "🛑 تم إلغاء العملية.");
         } else {
-            bot.sendMessage(chatId, `❌ **حدث خطأ:** ${error.message}`);
+            // ================== نظام التحويل للوضع اليدوي ==================
+            userState[chatId].isInteractive = true;
+            try { if (page && !page.isClosed()) await page.evaluate(() => window.stop()); } catch(e){}
+            
+            let reason = error.message === "MANUAL_MODE_REQUESTED" 
+                ? "قمت أنت بطلب التدخل اليدوي ⚙️." 
+                : `خطأ أثناء العملية: ${error.message} ⚠️`;
+
+            await bot.sendMessage(chatId, `⚠️ **تم تفعيل وضع التحكم اليدوي!**\nالسبب: ${reason}\n\nيمكنك الآن إكمال المهمة يدوياً عبر القوائم والأزرار أدناه متى ما انتهيت أرسل السكربت/المود لي!`);
+            
+            if (page && context && !userState[chatId].cancel) {
+                if (error.message !== "MANUAL_MODE_REQUESTED") {
+                    await sendErrorScreenshot(page, chatId, error.message);
+                }
+                await drawGridAndScreenshot(page, chatId, "🔲 **صورة الشاشة مقسمة لمربعات (وضع التدخل اليدوي):**");
+                await startInteractiveMode(chatId, page, context, tempDir, codeGen);
+                return; // نوقف عملية الإغلاق لتسمح للوضع اليدوي بالعمل
+            } else {
+                bot.sendMessage(chatId, `⚠️ فشل التحويل للوضع اليدوي، المتصفح مغلق.`);
+                isProcessing = false;
+            }
         }
     } finally {
-        if (context) await context.close().catch(()=>{});
-        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
-        isProcessing = false;
-        sendMainMenu(chatId);
+        if (userState[chatId] && !userState[chatId].isInteractive) {
+            if (context) await context.close().catch(()=>{});
+            try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
+            isProcessing = false;
+            sendMainMenu(chatId);
+        }
     }
 }
 
@@ -700,6 +761,16 @@ if (!userState[chatId]) userState[chatId] = { step: null, cancel: false, isInter
 const state = userState[chatId];
 
 try { 
+// أزرار الانتظار الخاصة بتغيير الإيميل
+if (query.data === 'trigger_manual') {
+    if (state.rejectInput) state.rejectInput(new Error("MANUAL_MODE_REQUESTED"));
+    return;
+}
+if (query.data === 'cancel_input') {
+    if (state.rejectInput) state.rejectInput(new Error("CANCELLED_BY_USER"));
+    return;
+}
+
 if (query.data.startsWith('int_')) { 
 const action = query.data.replace('int_', ''); 
 if (!state.isInteractive || !state.page || state.page.isClosed()) return bot.sendMessage(chatId, "⚠️ الجلسة منتهية أو المتصفح مغلق."); 
@@ -846,4 +917,4 @@ await createAccountLogic(chatId, true, { email: text, password: autoPass });
 process.on('uncaughtException', (err) => { console.error('Uncaught:', err); });
 process.on('unhandledRejection', (reason) => { console.error('Unhandled:', reason); });
 
-console.log("🤖 البوت يعمل (تحديث تغيير الإيميل بالإحداثيات المليمترية جاهز!)...");
+console.log("🤖 البوت يعمل (تحديث تغيير الإيميل + كاميرا لحظية + زر التدخل اليدوي جاهز!)...");
