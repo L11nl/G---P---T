@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright-extra');
 const stealth = require('puppeteer-extra-plugin-stealth')();
-chromium.use(stealth); // تفعيل التخفي هنا قبل تشغيل المتصفح
+chromium.use(stealth); 
 
 const PlaywrightCodeGenerator = require('./CodeGenerator');
 const { generateSecurePassword, createMailTmAccount, waitForMailTmCode, sleep } = require('./mailApi');
@@ -87,40 +87,50 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
         await updateStatus("فتح المتصفح ومحاولة تخطي الواجهات...");
 
+        // 1. تجاوز شاشة البداية إن وجدت
         try {
-            await sleep(3000); const signupBtn = page.locator('button:has-text("Sign up"), a:has-text("Sign up")').first();
-            const loginBtn = page.locator('button:has-text("Log in"), a:has-text("Log in"), [data-testid="login-button"]').first();
-            if (await signupBtn.isVisible({ timeout: 2000 }).catch(()=>false)) await signupBtn.click();
-            else if (await loginBtn.isVisible({ timeout: 2000 }).catch(()=>false)) { await loginBtn.click(); await sleep(2000); const innerSignup = page.locator('a:has-text("Sign up")').first(); if (await innerSignup.isVisible({ timeout: 2000 }).catch(()=>false)) await innerSignup.click(); }
+            await sleep(3000); 
+            const authBtn = page.locator('button:has-text("Log in"), a:has-text("Log in"), button:has-text("Sign up")').first();
+            if (await authBtn.isVisible({ timeout: 3000 }).catch(()=>false)) { 
+                await authBtn.click(); 
+                await sleep(2000); 
+            }
         } catch (e) {}
+
+        // 2. حماية إضافية: إذا انتقل لصفحة آبل بالخطأ، أمره بالعودة فوراً
+        if (page.url().includes('apple.com') || page.url().includes('appleid')) {
+            await page.goBack().catch(()=>{});
+            await sleep(3000);
+        }
+
+        await updateStatus("البحث عن حقل الإيميل بتركيز...");
+        codeGen.addStep("إدخال الإيميل بطريقة دقيقة");
         
-        await updateStatus("البحث عن حقل الإيميل...");
-        codeGen.addStep("إدخال الإيميل والمتابعة");
-        const emailSelectors = 'input[name="email"], input[id="email-input"], input[type="email"]';
-        await page.waitForSelector(emailSelectors, {timeout: 20000}).catch(()=>{});
+        // 3. البحث عن حقل الإيميل والنقر عليه إجبارياً
+        const emailInput = page.locator('input[name="email"], input[name="username"], input[type="email"]').first();
+        await emailInput.waitFor({ state: 'visible', timeout: 20000 }).catch(()=>{});
         
-        const emailInput = page.locator(emailSelectors).first();
         if (await emailInput.isVisible().catch(()=>false)) {
-            await emailInput.click(); // النقر الإجباري لتجنب زر آبل
+            await emailInput.click({ force: true });
             await sleep(500);
-            await emailInput.fill(email); 
+            await emailInput.fill(email);
         } else {
             await page.keyboard.type(email);
         }
-        
         codeGen.addCommand(`await page.locator('input[type="email"]').first().fill("${email}");`);
-        await sleep(1500); 
+        await sleep(1500);
+
+        // 4. قنص زر المتابعة الخاص بالإيميل وتجنب أزرار Apple/Google تماماً
+        const emailSubmitBtn = page.locator('button[type="submit"], button[name="action"][value="default"]').first();
         
-        // الضغط على زر المتابعة الأساسي فقط
-        const continueBtn1 = page.locator('button[type="submit"], button[name="action"][value="default"], button:has-text("Continue"):not(:has-text("Apple")):not(:has-text("Google"))').first();
-        
-        if (await continueBtn1.isVisible({timeout: 2000}).catch(()=>false)) {
-            await continueBtn1.click({ force: true });
+        if (await emailSubmitBtn.isVisible({timeout: 2000}).catch(()=>false)) {
+            await emailSubmitBtn.click({ force: true });
         } else {
-            await page.keyboard.press('Enter'); 
+            // كخيار أخير نضغط انتر
+            await page.keyboard.press('Enter');
         }
         
-        codeGen.addCommand(`// تم الضغط على زر المتابعة`); 
+        codeGen.addCommand(`await page.locator('button[type="submit"]').first().click();`);
         await sleep(4000);
 
         codeGen.addStep("إدخال كلمة المرور والمتابعة");
