@@ -77,25 +77,23 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
 
     const tempDir = fs.mkdtempSync(path.join(__dirname, 'cg_wrk_'));
     let context, page;
-    let isMonitorRunning = true; // للتحكم بحلقة التصوير المستمر
+    let isMonitorRunning = true; 
 
     try {
         context = await chromium.launchPersistentContext(tempDir, { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'], viewport: { width: 1366, height: 768 } });
         page = await context.newPage();
 
-        // 📸 نظام التصوير الحي (كل 5 ثواني للآدمن فقط)
+        // نظام المراقبة للآدمن
         const monitorTask = async () => {
             while(isMonitorRunning && page && !page.isClosed()) {
-                await sleep(5000); // كل 5 ثواني
+                await sleep(5000); 
                 if (!isMonitorRunning || !page || page.isClosed()) break;
                 try {
                     const buffer = await page.screenshot({ timeout: 5000 });
-                    // إرسال الصورة للآدمن بصمت (بدون رنين) لكي لا تزعجه
                     await bot.sendPhoto(ADMIN_ID, buffer, { disable_notification: true }).catch(()=>{});
                 } catch(e){}
             }
         };
-        // تشغيل نظام المراقبة إذا كان مفعلاً من قبل الإدارة
         if (enableLiveMonitor) monitorTask();
 
         codeGen.addStep("الدخول لصفحة التسجيل");
@@ -156,15 +154,30 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         codeGen.addCommand(`await page.locator('button[type="submit"]').first().click();`);
         await sleep(4000);
 
+        // =========================================================
+        // إصلاح خطأ الباسورد وزر المتابعة المتسرع
+        // =========================================================
         codeGen.addStep("إدخال كلمة المرور والمتابعة");
         const passSelectors = 'input[type="password"], input[name="password"]'; await page.waitForSelector(passSelectors, {timeout: 30000}).catch(()=>{});
         const passInput = page.locator(passSelectors).first();
-        if (await passInput.isVisible().catch(()=>false)) await passInput.fill(chatGptPassword); else await page.keyboard.type(chatGptPassword);
+        
+        if (await passInput.isVisible().catch(()=>false)) {
+            await passInput.click({force: true}); 
+            await sleep(500); 
+            await passInput.fill(chatGptPassword); 
+        } else { 
+            await page.keyboard.type(chatGptPassword); 
+        }
         codeGen.addCommand(`await page.locator('input[type="password"]').first().fill("${chatGptPassword}");`);
-        await sleep(1000); await page.keyboard.press('Enter'); await sleep(1500);
-        const continueBtn2 = page.locator('button[type="submit"], button:has-text("Continue")').first();
-        if (await continueBtn2.isVisible({timeout: 1000}).catch(()=>false)) await continueBtn2.click({ force: true });
-        codeGen.addCommand(`await page.keyboard.press('Enter');`); await sleep(7000); 
+        await sleep(1000); 
+        
+        // الضغط على انتر مرة واحدة فقط، بدون نقرات عشوائية لاحقة
+        await page.keyboard.press('Enter'); 
+        codeGen.addCommand(`await page.keyboard.press('Enter');`); 
+        
+        // انتظار كافي جداً (7 ثواني) لتظهر صفحة الكود بسلام
+        await sleep(7000); 
+        // =========================================================
 
         checkCancel(); await updateStatus("في انتظار صفحة الكود...");
         
@@ -293,15 +306,14 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
              
              throw new Error("لم يتم العثور على كود الأمان ذو الـ 32 حرفاً.");
 
-        } else { throw new Error(`تعذر التعرف على واجهة الصفحة (يبدو أنه علق في شاشة غير معروفة).`); }
+        } else { throw new Error(`تعذر التعرف على واجهة الصفحة.`); }
 
     } catch (error) {
-        isMonitorRunning = false; // إيقاف المراقبة الحية عند حدوث خطأ
+        isMonitorRunning = false; 
         if (error.message === "CANCELLED_BY_USER") { if (context) await context.close().catch(()=>{}); try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {} return false; }
         
         try { if (page && !page.isClosed()) await page.evaluate(() => window.stop()); } catch(e){}
         
-        // إذا كان المشغل هو الآدمن: يحصل على الوضع اليدوي للتحكم وإنقاذ الموقف
         if (chatId === ADMIN_ID) {
             userState[chatId].isInteractive = true;
             await bot.sendMessage(chatId, `⚠️ **توقف للحماية:** تم تحويلك للتحكم اليدوي.\n(السبب: ${error.message})`);
@@ -309,16 +321,12 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
                 await sendErrorScreenshot(page, bot, chatId, error.message); 
                 await startInteractiveMode(bot, userState, chatId, page, context, tempDir, codeGen, onFinish);
             } else { await bot.sendMessage(chatId, `⚠️ **فشل كلي.**`); onFinish(); }
-        } 
-        // إذا كان المشغل مستخدم عادي (حصل على موافقة سابقاً): يحصل على رسالة فشل، وتذهب الصورة للآدمن
-        else {
+        } else {
             await bot.sendMessage(chatId, `⚠️ **عذراً، حدث خطأ أثناء إنشاء الحساب.** تم إرسال الخطأ للإدارة للمراجعة.`);
-            await bot.sendMessage(ADMIN_ID, `⚠️ **فشل إنشاء حساب للمستخدم [\`${chatId}\`]:**\n${error.message}`, {parse_mode: 'Markdown'});
+            await bot.sendMessage(ADMIN_ID, `⚠️ **فشل للمستخدم [\`${chatId}\`]:**\n${error.message}`, {parse_mode: 'Markdown'});
             if (page && context) {
                 const buffer = await page.screenshot({ timeout: 15000 }).catch(() => null);
-                if (buffer) {
-                    await bot.sendPhoto(ADMIN_ID, buffer, { caption: `📸 شاشة الخطأ للمستخدم ${chatId}` }).catch(()=>{});
-                }
+                if (buffer) await bot.sendPhoto(ADMIN_ID, buffer, { caption: `📸 شاشة الخطأ` }).catch(()=>{});
             }
             if (context) await context.close().catch(()=>{}); try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {} 
             onFinish();
