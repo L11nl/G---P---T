@@ -15,7 +15,9 @@
     "axios": "^1.6.7",
     "@faker-js/faker": "^8.4.1",
     "dotenv": "^16.4.0",
-    "canvas": "^2.11.2"
+    "canvas": "^2.11.2",
+    "express": "*",
+    "otplib": "*"
   },
   "engines": {
     "node": ">=18.0.0"
