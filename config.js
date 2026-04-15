@@ -7,7 +7,9 @@ module.exports = {
     // يتم استدعاء آيدي المدير من ملف .env
     ADMIN_ID: process.env.ADMIN_ID,
     
-    MAIL_API: 'https://api.mail.tm',
+    // 🟢 تم التعديل إلى واجهة Byom.de الجديدة
+    MAIL_API: 'https://byom.de/api/rss.php?mail=',
+    
     ACCOUNTS_FILE: 'accounts.txt',
     
     // إعدادات الشبكة الأصلية الخاصة بك
