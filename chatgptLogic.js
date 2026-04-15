@@ -12,7 +12,7 @@ const { sendErrorScreenshot, drawGridAndScreenshot } = require('./browserUtils')
 
 const ACCOUNTS_FILE = 'accounts.txt';
 
-// ================= دوال التحكم بالحالة والقوائم =================
+// ================= دوال التحكم بالحالة =================
 async function updateStatusMessage(bot, chatId, text, messageId = null) {
     try {
         if (!messageId) {
@@ -59,7 +59,7 @@ async function startInteractiveMode(bot, userState, chatId, page, context, tempD
 }
 
 // ================= الدالة الرئيسية لإنشاء الحساب =================
-async function createAccountLogic(bot, userState, chatId, isManual, manualData, onFinish, sendMainMenu) {
+async function createAccountLogic(bot, userState, chatId, isManual, manualData, onFinish, sendMainMenu, ADMIN_ID, enableLiveMonitor) {
     let modeText = isManual ? "(يدوي)" : "(تلقائي)";
     let statusMsgID = null;
     userState[chatId] = { step: null, cancel: false, isInteractive: false };
@@ -77,10 +77,26 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
 
     const tempDir = fs.mkdtempSync(path.join(__dirname, 'cg_wrk_'));
     let context, page;
+    let isMonitorRunning = true; // للتحكم بحلقة التصوير المستمر
 
     try {
         context = await chromium.launchPersistentContext(tempDir, { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'], viewport: { width: 1366, height: 768 } });
         page = await context.newPage();
+
+        // 📸 نظام التصوير الحي (كل 5 ثواني للآدمن فقط)
+        const monitorTask = async () => {
+            while(isMonitorRunning && page && !page.isClosed()) {
+                await sleep(5000); // كل 5 ثواني
+                if (!isMonitorRunning || !page || page.isClosed()) break;
+                try {
+                    const buffer = await page.screenshot({ timeout: 5000 });
+                    // إرسال الصورة للآدمن بصمت (بدون رنين) لكي لا تزعجه
+                    await bot.sendPhoto(ADMIN_ID, buffer, { disable_notification: true }).catch(()=>{});
+                } catch(e){}
+            }
+        };
+        // تشغيل نظام المراقبة إذا كان مفعلاً من قبل الإدارة
+        if (enableLiveMonitor) monitorTask();
 
         codeGen.addStep("الدخول لصفحة التسجيل");
         codeGen.addCommand(`await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded" });`);
@@ -159,34 +175,24 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         } else { code = await waitForMailTmCode(email, mailToken, userState, chatId, 100); }
 
         if (code) {
-            codeGen.addStep("إدخال كود التحقق (بدقة عالية)");
-            // بحث وتحديد دقيق لمربع الكود لتجنب الكتابة في الفراغ
+            codeGen.addStep("إدخال كود التحقق");
             const codeInput = page.locator('input[inputmode="numeric"], input[name="code"], input[type="text"]').first();
             await codeInput.waitFor({ state: 'visible', timeout: 10000 }).catch(()=>{});
             
             if (await codeInput.isVisible().catch(()=>false)) {
-                await codeInput.click({ force: true });
-                await sleep(500);
-                await codeInput.fill(code);
-            } else {
-                await page.keyboard.type(code);
-            }
-            codeGen.addCommand(`await page.keyboard.type("${code}");`); 
-            await sleep(2000);
+                await codeInput.click({ force: true }); await sleep(500); await codeInput.fill(code);
+            } else { await page.keyboard.type(code); }
+            codeGen.addCommand(`await page.keyboard.type("${code}");`); await sleep(2000);
         }
 
         const continueBtnAfterCode = page.locator('button:has-text("Continue"), button[type="submit"]').last();
         if (await continueBtnAfterCode.isVisible({timeout: 2000}).catch(()=>false)) await continueBtnAfterCode.click({ force: true }); else await page.keyboard.press('Enter');
         await sleep(5000); 
 
-        // التحديث: بحث شامل عن حقل الاسم (Full Name) وتجنب خطأ رقم الهاتف
         const nameInputNode = page.locator('input[name="fullname"], input[id="fullname"], [placeholder*="name" i], [aria-label*="name" i]').first();
         if (await nameInputNode.isVisible({ timeout: 10000 }).catch(() => false)) {
             codeGen.addStep("تعبئة الاسم وتاريخ الميلاد"); 
-            await nameInputNode.click({ force: true }).catch(()=>{});
-            await sleep(500);
-            await nameInputNode.fill("Auto User"); 
-            await sleep(1000);
+            await nameInputNode.click({ force: true }).catch(()=>{}); await sleep(500); await nameInputNode.fill("Auto User"); await sleep(1000);
             
             const bdayInput = page.locator('input[name="birthday"], input[id="birthday"], [aria-label*="birthday" i], [placeholder*="YYYY" i]').first();
             const ageInput = page.locator('input[name="age"], input[id="age"], [placeholder*="Age" i]').first();
@@ -205,10 +211,9 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
             if (await finishBtn.isVisible().catch(() => false)) await finishBtn.click({ force: true }); else await page.keyboard.press('Enter');
             await sleep(8000); await updateStatus("تم ملء بيانات العمر.");
         } else {
-            // كشف أخطاء رقم الهاتف
             const bodyTxt = await page.innerText('body').catch(()=>"");
             if(bodyTxt.toLowerCase().includes('verify your phone number') || bodyTxt.toLowerCase().includes('phone number')) {
-                throw new Error("يطلب الموقع التحقق برقم هاتف (Phone Verification). لا يمكن تخطي هذه الخطوة للأسف.");
+                throw new Error("يطلب الموقع التحقق برقم هاتف. لا يمكن إكمال التسجيل.");
             }
         }
 
@@ -278,6 +283,7 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
                          await bot.sendDocument(chatId, sessionFilePath, { caption: "📄 **بيانات السشن**" }).catch(()=>{}); if (fs.existsSync(sessionFilePath)) fs.unlinkSync(sessionFilePath);
                      } catch (sessionErr) {}
 
+                     isMonitorRunning = false;
                      if (context) await context.close().catch(()=>{}); if (tempDir) try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
                      const jsCode = codeGen.getFinalScript(); const logPath = path.join(__dirname, `AutoGenerated_Script_${Date.now()}.js`); fs.writeFileSync(logPath, jsCode);
                      await bot.sendDocument(chatId, logPath, { caption: "🧑‍💻 **تم التوليد!**", parse_mode: 'Markdown' }); fs.unlinkSync(logPath);
@@ -285,23 +291,40 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
                  }
              }
              
-             await bot.sendMessage(chatId, "⚠️ **لم يتم العثور على الكود، سيتم تحويلك للتحكم اليدوي.**");
-             await drawGridAndScreenshot(page, bot, chatId, "🔲 **صورة الشاشة:**"); await startInteractiveMode(bot, userState, chatId, page, context, tempDir, codeGen, onFinish);
+             throw new Error("لم يتم العثور على كود الأمان ذو الـ 32 حرفاً.");
 
-        } else { throw new Error(`تعذر التعرف على واجهة الصفحة.`); }
+        } else { throw new Error(`تعذر التعرف على واجهة الصفحة (يبدو أنه علق في شاشة غير معروفة).`); }
 
     } catch (error) {
+        isMonitorRunning = false; // إيقاف المراقبة الحية عند حدوث خطأ
         if (error.message === "CANCELLED_BY_USER") { if (context) await context.close().catch(()=>{}); try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {} return false; }
-        if (userState[chatId]) userState[chatId].isInteractive = true;
+        
         try { if (page && !page.isClosed()) await page.evaluate(() => window.stop()); } catch(e){}
         
-        // إرسال رسالة خطأ واضحة في حال تعطل البوت
-        await bot.sendMessage(chatId, `⚠️ **توقف للحماية:** تم تحويلك للتحكم اليدوي.\n(السبب: ${error.message})`);
-        
-        if (page && context && !userState[chatId].cancel) {
-            await sendErrorScreenshot(page, bot, chatId, error.message); await startInteractiveMode(bot, userState, chatId, page, context, tempDir, codeGen, onFinish);
-        } else { await bot.sendMessage(chatId, `⚠️ **فشل كلي.**`); onFinish(); }
+        // إذا كان المشغل هو الآدمن: يحصل على الوضع اليدوي للتحكم وإنقاذ الموقف
+        if (chatId === ADMIN_ID) {
+            userState[chatId].isInteractive = true;
+            await bot.sendMessage(chatId, `⚠️ **توقف للحماية:** تم تحويلك للتحكم اليدوي.\n(السبب: ${error.message})`);
+            if (page && context && !userState[chatId].cancel) {
+                await sendErrorScreenshot(page, bot, chatId, error.message); 
+                await startInteractiveMode(bot, userState, chatId, page, context, tempDir, codeGen, onFinish);
+            } else { await bot.sendMessage(chatId, `⚠️ **فشل كلي.**`); onFinish(); }
+        } 
+        // إذا كان المشغل مستخدم عادي (حصل على موافقة سابقاً): يحصل على رسالة فشل، وتذهب الصورة للآدمن
+        else {
+            await bot.sendMessage(chatId, `⚠️ **عذراً، حدث خطأ أثناء إنشاء الحساب.** تم إرسال الخطأ للإدارة للمراجعة.`);
+            await bot.sendMessage(ADMIN_ID, `⚠️ **فشل إنشاء حساب للمستخدم [\`${chatId}\`]:**\n${error.message}`, {parse_mode: 'Markdown'});
+            if (page && context) {
+                const buffer = await page.screenshot({ timeout: 15000 }).catch(() => null);
+                if (buffer) {
+                    await bot.sendPhoto(ADMIN_ID, buffer, { caption: `📸 شاشة الخطأ للمستخدم ${chatId}` }).catch(()=>{});
+                }
+            }
+            if (context) await context.close().catch(()=>{}); try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {} 
+            onFinish();
+        }
     } finally {
+        isMonitorRunning = false;
         if (userState[chatId] && !userState[chatId].isInteractive) { if (context) await context.close().catch(()=>{}); try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {} onFinish(); }
     }
     return true;
