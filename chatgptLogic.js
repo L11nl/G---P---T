@@ -16,6 +16,9 @@ const ACCOUNTS_FILE = 'accounts.txt';
 // 🛑 قائمة التخطي (حسب منطقك البرمجي)
 // ========================================================
 const SKIP_WORDS = [
+    
+    'Continue with Google', 
+    'Continue with Apple', 
     'Skip Tour',
     'Skip',
     'Continue',
