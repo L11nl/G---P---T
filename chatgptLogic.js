@@ -87,9 +87,6 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
         await updateStatus("فتح المتصفح وتدمير أزرار Apple و Google...");
 
-        // ================================================================
-        // 🔥 السلاح النووي: دالة لحذف أزرار آبل وجوجل من الصفحة برمجياً 🔥
-        // ================================================================
         const nukeThirdPartyBtns = async () => {
             try {
                 await page.evaluate(() => {
@@ -97,7 +94,7 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
                     buttons.forEach(btn => {
                         const text = (btn.innerText || btn.textContent || '').toLowerCase();
                         if (text.includes('apple') || text.includes('google') || text.includes('microsoft')) {
-                            btn.remove(); // مسح الزر نهائياً من المتصفح
+                            btn.remove(); 
                         }
                     });
                 });
@@ -105,59 +102,43 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         };
 
         await sleep(3000);
-        await nukeThirdPartyBtns(); // تفعيل المسح الأول
+        await nukeThirdPartyBtns(); 
 
-        // 1. تجاوز شاشة البداية إن وجدت
         try {
             const authBtn = page.locator('button:has-text("Log in"), a:has-text("Log in"), button:has-text("Sign up")').first();
-            if (await authBtn.isVisible({ timeout: 2000 }).catch(()=>false)) { 
-                await authBtn.click(); 
-                await sleep(2000); 
-            }
+            if (await authBtn.isVisible({ timeout: 2000 }).catch(()=>false)) { await authBtn.click(); await sleep(2000); }
         } catch (e) {}
 
-        await nukeThirdPartyBtns(); // تفعيل المسح الثاني بعد تحميل صفحة التسجيل
+        await nukeThirdPartyBtns(); 
 
-        // 2. حماية إضافية (إذا هرب إلى آبل، نرجعه ونمسح الزر مجدداً)
         if (page.url().includes('apple.com') || page.url().includes('appleid')) {
-            await page.goBack().catch(()=>{});
-            await sleep(3000);
-            await nukeThirdPartyBtns();
+            await page.goBack().catch(()=>{}); await sleep(3000); await nukeThirdPartyBtns();
         }
 
         await updateStatus("إدخال الإيميل بتركيز...");
         codeGen.addStep("إدخال الإيميل والمتابعة بدقة");
         
-        // 3. البحث عن حقل الإيميل والنقر عليه إجبارياً
         const emailInput = page.locator('input[type="email"], input[name="email"], input[name="username"]').first();
         await emailInput.waitFor({ state: 'visible', timeout: 20000 }).catch(()=>{});
         
         if (await emailInput.isVisible().catch(()=>false)) {
-            await emailInput.click({ force: true }); // النقر المباشر لضمان التركيز
-            await sleep(500);
-            await emailInput.fill(email);
-        } else {
-            await page.keyboard.type(email);
-        }
+            await emailInput.click({ force: true }); await sleep(500); await emailInput.fill(email);
+        } else { await page.keyboard.type(email); }
         codeGen.addCommand(`await page.locator('input[type="email"]').first().fill("${email}");`);
         await sleep(1500);
 
-        await nukeThirdPartyBtns(); // تأكيد خلو الصفحة من أزرار آبل قبل ضغط انتر
+        await nukeThirdPartyBtns(); 
 
-        // 4. الضغط على زر المتابعة
         const emailSubmitBtn = page.locator('button[type="submit"], button:has-text("Continue")').first();
         if (await emailSubmitBtn.isVisible({timeout: 2000}).catch(()=>false)) {
             await emailSubmitBtn.click({ force: true });
         } else {
-            // نركز على حقل الإيميل مجدداً قبل الضغط على انتر لضمان عدم هروب التركيز
             if (await emailInput.isVisible().catch(()=>false)) await emailInput.focus();
             await page.keyboard.press('Enter');
         }
         
         codeGen.addCommand(`await page.locator('button[type="submit"]').first().click();`);
         await sleep(4000);
-
-        // ================================================================
 
         codeGen.addStep("إدخال كلمة المرور والمتابعة");
         const passSelectors = 'input[type="password"], input[name="password"]'; await page.waitForSelector(passSelectors, {timeout: 30000}).catch(()=>{});
@@ -178,20 +159,35 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         } else { code = await waitForMailTmCode(email, mailToken, userState, chatId, 100); }
 
         if (code) {
-            codeGen.addStep("إدخال كود التحقق");
-            const codeInput = page.getByRole("textbox", { name: "Code" });
-            await codeInput.waitFor({ state: 'visible', timeout: 15000 }).catch(async () => { await page.keyboard.type(code); });
-            if (await codeInput.isVisible().catch(()=>false)) await codeInput.fill(code);
-            codeGen.addCommand(`await page.keyboard.type("${code}");`); await sleep(2000);
+            codeGen.addStep("إدخال كود التحقق (بدقة عالية)");
+            // بحث وتحديد دقيق لمربع الكود لتجنب الكتابة في الفراغ
+            const codeInput = page.locator('input[inputmode="numeric"], input[name="code"], input[type="text"]').first();
+            await codeInput.waitFor({ state: 'visible', timeout: 10000 }).catch(()=>{});
+            
+            if (await codeInput.isVisible().catch(()=>false)) {
+                await codeInput.click({ force: true });
+                await sleep(500);
+                await codeInput.fill(code);
+            } else {
+                await page.keyboard.type(code);
+            }
+            codeGen.addCommand(`await page.keyboard.type("${code}");`); 
+            await sleep(2000);
         }
 
-        const continueBtnAfterCode = page.locator('button:has-text("Continue")').last();
-        if (await continueBtnAfterCode.isVisible().catch(()=>false)) await continueBtnAfterCode.click({ force: true }); else await page.keyboard.press('Enter');
+        const continueBtnAfterCode = page.locator('button:has-text("Continue"), button[type="submit"]').last();
+        if (await continueBtnAfterCode.isVisible({timeout: 2000}).catch(()=>false)) await continueBtnAfterCode.click({ force: true }); else await page.keyboard.press('Enter');
         await sleep(5000); 
 
-        const nameInputNode = page.getByRole("textbox", { name: "Full name" }).first();
-        if (await nameInputNode.isVisible({ timeout: 15000 }).catch(() => false)) {
-            codeGen.addStep("تعبئة الاسم وتاريخ الميلاد"); await nameInputNode.fill("Auto User"); await sleep(1000);
+        // التحديث: بحث شامل عن حقل الاسم (Full Name) وتجنب خطأ رقم الهاتف
+        const nameInputNode = page.locator('input[name="fullname"], input[id="fullname"], [placeholder*="name" i], [aria-label*="name" i]').first();
+        if (await nameInputNode.isVisible({ timeout: 10000 }).catch(() => false)) {
+            codeGen.addStep("تعبئة الاسم وتاريخ الميلاد"); 
+            await nameInputNode.click({ force: true }).catch(()=>{});
+            await sleep(500);
+            await nameInputNode.fill("Auto User"); 
+            await sleep(1000);
+            
             const bdayInput = page.locator('input[name="birthday"], input[id="birthday"], [aria-label*="birthday" i], [placeholder*="YYYY" i]').first();
             const ageInput = page.locator('input[name="age"], input[id="age"], [placeholder*="Age" i]').first();
 
@@ -205,9 +201,15 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
                 await page.keyboard.press('Tab'); const pageTxt = await page.innerText('body').catch(()=>"");
                 if (pageTxt.toLowerCase().includes("birthday") || pageTxt.includes("YYYY")) await page.keyboard.type("01012000", { delay: 100 }); else await page.keyboard.type("25", { delay: 100 });
             }
-            const finishBtn = page.locator('button:has-text("Finish creating account"), button:has-text("Continue")').last();
+            const finishBtn = page.locator('button:has-text("Finish creating account"), button:has-text("Continue"), button:has-text("Agree")').last();
             if (await finishBtn.isVisible().catch(() => false)) await finishBtn.click({ force: true }); else await page.keyboard.press('Enter');
             await sleep(8000); await updateStatus("تم ملء بيانات العمر.");
+        } else {
+            // كشف أخطاء رقم الهاتف
+            const bodyTxt = await page.innerText('body').catch(()=>"");
+            if(bodyTxt.toLowerCase().includes('verify your phone number') || bodyTxt.toLowerCase().includes('phone number')) {
+                throw new Error("يطلب الموقع التحقق برقم هاتف (Phone Verification). لا يمكن تخطي هذه الخطوة للأسف.");
+            }
         }
 
         await updateStatus("في انتظار الصفحة الرئيسية...");
@@ -216,11 +218,11 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
             const currentUrl = page.url(); const bodyTxt = await page.innerText('body').catch(()=>"");
             if (bodyTxt.includes("You're all set") || bodyTxt.includes("ChatGPT can make mistakes")) {
                 try {
-                    const continueBtn = page.locator('button:has-text("Continue"), [role="button"]:has-text("Continue")').last();
+                    const continueBtn = page.locator('button:has-text("Continue"), button:has-text("Okay"), [role="button"]:has-text("Continue")').last();
                     if (await continueBtn.isVisible({timeout: 1000}).catch(()=>false)) { await continueBtn.click({force: true}); await sleep(1500); } else { await page.keyboard.press('Enter'); await sleep(1000); }
                 } catch(e) {}
             }
-            if ((currentUrl.includes('chatgpt.com') && !currentUrl.includes('auth') && !currentUrl.includes('login')) || bodyTxt.includes('Where should we begin?') || await page.locator('#prompt-textarea').isVisible().catch(()=>false)) { isMainReady = true; break; }
+            if ((currentUrl.includes('chatgpt.com') && !currentUrl.includes('auth') && !currentUrl.includes('login')) || bodyTxt.includes('Where should we begin?') || bodyTxt.includes('How can I help you') || await page.locator('#prompt-textarea').isVisible().catch(()=>false)) { isMainReady = true; break; }
             await sleep(2000);
         }
 
@@ -292,7 +294,10 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         if (error.message === "CANCELLED_BY_USER") { if (context) await context.close().catch(()=>{}); try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {} return false; }
         if (userState[chatId]) userState[chatId].isInteractive = true;
         try { if (page && !page.isClosed()) await page.evaluate(() => window.stop()); } catch(e){}
-        await bot.sendMessage(chatId, `⚠️ **توقف للحماية:** تم تحويلك للتحكم اليدوي.`);
+        
+        // إرسال رسالة خطأ واضحة في حال تعطل البوت
+        await bot.sendMessage(chatId, `⚠️ **توقف للحماية:** تم تحويلك للتحكم اليدوي.\n(السبب: ${error.message})`);
+        
         if (page && context && !userState[chatId].cancel) {
             await sendErrorScreenshot(page, bot, chatId, error.message); await startInteractiveMode(bot, userState, chatId, page, context, tempDir, codeGen, onFinish);
         } else { await bot.sendMessage(chatId, `⚠️ **فشل كلي.**`); onFinish(); }
