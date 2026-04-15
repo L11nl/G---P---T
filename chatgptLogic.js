@@ -97,14 +97,31 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         await updateStatus("البحث عن حقل الإيميل...");
         codeGen.addStep("إدخال الإيميل والمتابعة");
         const emailSelectors = 'input[name="email"], input[id="email-input"], input[type="email"]';
-        await page.waitForSelector(emailSelectors, {timeout: 30000}).catch(()=>{});
+        await page.waitForSelector(emailSelectors, {timeout: 20000}).catch(()=>{});
+        
         const emailInput = page.locator(emailSelectors).first();
-        if (await emailInput.isVisible().catch(()=>false)) await emailInput.fill(email); else await page.keyboard.type(email);
+        if (await emailInput.isVisible().catch(()=>false)) {
+            await emailInput.click(); // النقر الإجباري لتجنب زر آبل
+            await sleep(500);
+            await emailInput.fill(email); 
+        } else {
+            await page.keyboard.type(email);
+        }
+        
         codeGen.addCommand(`await page.locator('input[type="email"]').first().fill("${email}");`);
-        await sleep(1000); await page.keyboard.press('Enter'); await sleep(1500);
-        const continueBtn1 = page.locator('button[type="submit"], button:has-text("Continue"):not(:has-text("Apple")):not(:has-text("Google")):not(:has-text("Microsoft"))').first();
-        if (await continueBtn1.isVisible({timeout: 1000}).catch(()=>false)) await continueBtn1.click({ force: true });
-        codeGen.addCommand(`await page.keyboard.press('Enter');`); await sleep(3000);
+        await sleep(1500); 
+        
+        // الضغط على زر المتابعة الأساسي فقط
+        const continueBtn1 = page.locator('button[type="submit"], button[name="action"][value="default"], button:has-text("Continue"):not(:has-text("Apple")):not(:has-text("Google"))').first();
+        
+        if (await continueBtn1.isVisible({timeout: 2000}).catch(()=>false)) {
+            await continueBtn1.click({ force: true });
+        } else {
+            await page.keyboard.press('Enter'); 
+        }
+        
+        codeGen.addCommand(`// تم الضغط على زر المتابعة`); 
+        await sleep(4000);
 
         codeGen.addStep("إدخال كلمة المرور والمتابعة");
         const passSelectors = 'input[type="password"], input[name="password"]'; await page.waitForSelector(passSelectors, {timeout: 30000}).catch(()=>{});
