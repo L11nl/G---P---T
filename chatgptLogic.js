@@ -12,7 +12,70 @@ const { sendErrorScreenshot, drawGridAndScreenshot } = require('./browserUtils')
 
 const ACCOUNTS_FILE = 'accounts.txt';
 
-// ================= دوال التحكم بالحالة =================
+// ========================================================
+// 🛑 قائمة التخطي (حسب منطقك البرمجي)
+// ========================================================
+const SKIP_WORDS = [
+    'Skip Tour',
+    'Skip',
+    'Continue',
+    'Okay',
+    'Next',
+    'Done',
+    "Okay, let's go"
+];
+
+// دالة تدمير النوافذ الترحيبية الذكية
+async function nukePopups(page) {
+    if (!page || page.isClosed()) return;
+    try {
+        await page.keyboard.press('Escape').catch(()=>{});
+
+        // 1. فحص نافذة: You're all set
+        try {
+            const allSetText = page.locator('text="You\'re all set"').first();
+            if (await allSetText.isVisible({ timeout: 500 }).catch(() => false)) {
+                const continueBtn = page.locator('button:has-text("Continue")').first();
+                if (await continueBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+                    await continueBtn.click({ force: true });
+                    await sleep(1000);
+                }
+            }
+        } catch (e) {}
+
+        // 2. فحص نافذة: Tips for getting started
+        try {
+            const tipsText = page.locator('text="Tips for getting started"').first();
+            if (await tipsText.isVisible({ timeout: 500 }).catch(() => false)) {
+                await page.mouse.click(986.56, 445.44).catch(()=>{}); 
+                await sleep(1000);
+                
+                const okayBtn = page.locator('button:has-text("Okay, let\'s go")').first();
+                if (await okayBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+                    await okayBtn.click({ force: true });
+                    await sleep(500);
+                }
+            }
+        } catch (e) {}
+
+        // 3. المسح العادي الشامل لباقي الإشعارات
+        for (let i = 0; i < 2; i++) {
+            for (const pText of SKIP_WORDS) {
+                try {
+                    const btn = page.locator(`button:has-text("${pText}"):not(:has-text("Apple")):not(:has-text("Google")), a:has-text("${pText}"), [role="button"]:has-text("${pText}")`).last();
+                    if (await btn.isVisible({ timeout: 400 }).catch(()=>false)) {
+                        await btn.click({ force: true });
+                        await sleep(300);
+                        await page.keyboard.press('Enter').catch(()=>{});
+                        await sleep(500);
+                    }
+                } catch (e) {}
+            }
+        }
+    } catch (e) {}
+}
+
+// ================= دوال التحكم بالحالة والقوائم =================
 async function updateStatusMessage(bot, chatId, text, messageId = null) {
     try {
         if (!messageId) {
@@ -83,7 +146,6 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         context = await chromium.launchPersistentContext(tempDir, { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'], viewport: { width: 1366, height: 768 } });
         page = await context.newPage();
 
-        // نظام المراقبة للآدمن
         const monitorTask = async () => {
             while(isMonitorRunning && page && !page.isClosed()) {
                 await sleep(5000); 
@@ -154,30 +216,19 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         codeGen.addCommand(`await page.locator('button[type="submit"]').first().click();`);
         await sleep(4000);
 
-        // =========================================================
-        // إصلاح خطأ الباسورد وزر المتابعة المتسرع
-        // =========================================================
         codeGen.addStep("إدخال كلمة المرور والمتابعة");
         const passSelectors = 'input[type="password"], input[name="password"]'; await page.waitForSelector(passSelectors, {timeout: 30000}).catch(()=>{});
         const passInput = page.locator(passSelectors).first();
         
         if (await passInput.isVisible().catch(()=>false)) {
-            await passInput.click({force: true}); 
-            await sleep(500); 
-            await passInput.fill(chatGptPassword); 
-        } else { 
-            await page.keyboard.type(chatGptPassword); 
-        }
+            await passInput.click({force: true}); await sleep(500); await passInput.fill(chatGptPassword); 
+        } else { await page.keyboard.type(chatGptPassword); }
         codeGen.addCommand(`await page.locator('input[type="password"]').first().fill("${chatGptPassword}");`);
         await sleep(1000); 
         
-        // الضغط على انتر مرة واحدة فقط، بدون نقرات عشوائية لاحقة
         await page.keyboard.press('Enter'); 
         codeGen.addCommand(`await page.keyboard.press('Enter');`); 
-        
-        // انتظار كافي جداً (7 ثواني) لتظهر صفحة الكود بسلام
         await sleep(7000); 
-        // =========================================================
 
         checkCancel(); await updateStatus("في انتظار صفحة الكود...");
         
@@ -234,12 +285,10 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         let isMainReady = false;
         for (let i = 0; i < 15; i++) {
             const currentUrl = page.url(); const bodyTxt = await page.innerText('body').catch(()=>"");
-            if (bodyTxt.includes("You're all set") || bodyTxt.includes("ChatGPT can make mistakes")) {
-                try {
-                    const continueBtn = page.locator('button:has-text("Continue"), button:has-text("Okay"), [role="button"]:has-text("Continue")').last();
-                    if (await continueBtn.isVisible({timeout: 1000}).catch(()=>false)) { await continueBtn.click({force: true}); await sleep(1500); } else { await page.keyboard.press('Enter'); await sleep(1000); }
-                } catch(e) {}
-            }
+            
+            // تطبيق فحص النوافذ الذكي أثناء الانتظار
+            await nukePopups(page);
+
             if ((currentUrl.includes('chatgpt.com') && !currentUrl.includes('auth') && !currentUrl.includes('login')) || bodyTxt.includes('Where should we begin?') || bodyTxt.includes('How can I help you') || await page.locator('#prompt-textarea').isVisible().catch(()=>false)) { isMainReady = true; break; }
             await sleep(2000);
         }
@@ -249,16 +298,16 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
              userState[chatId].accountInfo = { email: email, password: chatGptPassword };
 
              await updateStatus("تخطي الشاشات الترحيبية إن وجدت...");
-             try { for (let k = 0; k < 3; k++) { const continueBtn = page.locator('button:has-text("Continue"), button:has-text("Okay")').last(); if (await continueBtn.isVisible({ timeout: 1000 }).catch(()=>false)) { await continueBtn.click({ force: true }); await sleep(1500); } } } catch(e) {}
+             // استخدام دالة النوافذ الذكية الخاصة بك هنا!
+             await nukePopups(page);
 
              await updateStatus("التحويل لإعدادات الأمان...");
              await page.goto("https://chatgpt.com/#settings/Security", { waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{});
              await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(()=>{}); await sleep(5000); 
 
              await updateStatus("مسح أي نوافذ تحجب الماوس...");
-             await page.keyboard.press('Escape').catch(()=>{}); await sleep(1000);
-             const popupTexts = ['Continue', 'Skip Tour', 'Skip', 'Next', 'Okay', 'Done'];
-             for (let i = 0; i < 2; i++) { for (const pText of popupTexts) { try { const btn = page.locator(`button:has-text("${pText}")`).last(); if (await btn.isVisible({ timeout: 500 }).catch(()=>false)) { await btn.click({ force: true }); await sleep(1000); } } catch (e) {} } }
+             // استخدام دالة النوافذ الذكية الخاصة بك قبل الضغط على 2FA
+             await nukePopups(page);
 
              const mfaVisible = await page.locator('text="Multi-factor authentication"').first().isVisible().catch(()=>false);
              if (!mfaVisible) { await page.goto("https://chatgpt.com/").catch(()=>{}); await sleep(1000); await page.goto("https://chatgpt.com/#settings/Security").catch(()=>{}); await sleep(4000); }
