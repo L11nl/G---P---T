@@ -85,33 +85,55 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         codeGen.addStep("الدخول لصفحة التسجيل");
         codeGen.addCommand(`await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded" });`);
         await page.goto("https://chatgpt.com/auth/login", { waitUntil: "domcontentloaded", timeout: 60000 });
-        await updateStatus("فتح المتصفح ومحاولة تخطي الواجهات...");
+        await updateStatus("فتح المتصفح وتدمير أزرار Apple و Google...");
+
+        // ================================================================
+        // 🔥 السلاح النووي: دالة لحذف أزرار آبل وجوجل من الصفحة برمجياً 🔥
+        // ================================================================
+        const nukeThirdPartyBtns = async () => {
+            try {
+                await page.evaluate(() => {
+                    const buttons = document.querySelectorAll('button, a, [role="button"]');
+                    buttons.forEach(btn => {
+                        const text = (btn.innerText || btn.textContent || '').toLowerCase();
+                        if (text.includes('apple') || text.includes('google') || text.includes('microsoft')) {
+                            btn.remove(); // مسح الزر نهائياً من المتصفح
+                        }
+                    });
+                });
+            } catch(e) {}
+        };
+
+        await sleep(3000);
+        await nukeThirdPartyBtns(); // تفعيل المسح الأول
 
         // 1. تجاوز شاشة البداية إن وجدت
         try {
-            await sleep(3000); 
             const authBtn = page.locator('button:has-text("Log in"), a:has-text("Log in"), button:has-text("Sign up")').first();
-            if (await authBtn.isVisible({ timeout: 3000 }).catch(()=>false)) { 
+            if (await authBtn.isVisible({ timeout: 2000 }).catch(()=>false)) { 
                 await authBtn.click(); 
                 await sleep(2000); 
             }
         } catch (e) {}
 
-        // 2. حماية إضافية: إذا انتقل لصفحة آبل بالخطأ، أمره بالعودة فوراً
+        await nukeThirdPartyBtns(); // تفعيل المسح الثاني بعد تحميل صفحة التسجيل
+
+        // 2. حماية إضافية (إذا هرب إلى آبل، نرجعه ونمسح الزر مجدداً)
         if (page.url().includes('apple.com') || page.url().includes('appleid')) {
             await page.goBack().catch(()=>{});
             await sleep(3000);
+            await nukeThirdPartyBtns();
         }
 
-        await updateStatus("البحث عن حقل الإيميل بتركيز...");
-        codeGen.addStep("إدخال الإيميل بطريقة دقيقة");
+        await updateStatus("إدخال الإيميل بتركيز...");
+        codeGen.addStep("إدخال الإيميل والمتابعة بدقة");
         
         // 3. البحث عن حقل الإيميل والنقر عليه إجبارياً
-        const emailInput = page.locator('input[name="email"], input[name="username"], input[type="email"]').first();
+        const emailInput = page.locator('input[type="email"], input[name="email"], input[name="username"]').first();
         await emailInput.waitFor({ state: 'visible', timeout: 20000 }).catch(()=>{});
         
         if (await emailInput.isVisible().catch(()=>false)) {
-            await emailInput.click({ force: true });
+            await emailInput.click({ force: true }); // النقر المباشر لضمان التركيز
             await sleep(500);
             await emailInput.fill(email);
         } else {
@@ -120,18 +142,22 @@ async function createAccountLogic(bot, userState, chatId, isManual, manualData, 
         codeGen.addCommand(`await page.locator('input[type="email"]').first().fill("${email}");`);
         await sleep(1500);
 
-        // 4. قنص زر المتابعة الخاص بالإيميل وتجنب أزرار Apple/Google تماماً
-        const emailSubmitBtn = page.locator('button[type="submit"], button[name="action"][value="default"]').first();
-        
+        await nukeThirdPartyBtns(); // تأكيد خلو الصفحة من أزرار آبل قبل ضغط انتر
+
+        // 4. الضغط على زر المتابعة
+        const emailSubmitBtn = page.locator('button[type="submit"], button:has-text("Continue")').first();
         if (await emailSubmitBtn.isVisible({timeout: 2000}).catch(()=>false)) {
             await emailSubmitBtn.click({ force: true });
         } else {
-            // كخيار أخير نضغط انتر
+            // نركز على حقل الإيميل مجدداً قبل الضغط على انتر لضمان عدم هروب التركيز
+            if (await emailInput.isVisible().catch(()=>false)) await emailInput.focus();
             await page.keyboard.press('Enter');
         }
         
         codeGen.addCommand(`await page.locator('button[type="submit"]').first().click();`);
         await sleep(4000);
+
+        // ================================================================
 
         codeGen.addStep("إدخال كلمة المرور والمتابعة");
         const passSelectors = 'input[type="password"], input[name="password"]'; await page.waitForSelector(passSelectors, {timeout: 30000}).catch(()=>{});
